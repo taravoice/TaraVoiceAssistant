@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState } from 'react';
 
-interface CustomSection {
+export interface CustomSection {
   id: string;
   title: string;
   content: string;
   image?: string;
+  page: string; // 'Home' | 'About' | 'Features' | 'Pricing' | 'Contact'
 }
 
 interface SiteImages {
@@ -17,8 +18,8 @@ interface SiteContent {
     heroSubtitle: string;
     aboutTitle: string;
     aboutText: string;
-    customSections: CustomSection[];
   };
+  customSections: CustomSection[];
   images: SiteImages;
 }
 
@@ -34,6 +35,7 @@ interface SiteContextType {
 }
 
 const defaultImages: SiteImages = {
+  logo: '/logo.png',
   // Home Page
   homeHeroBg: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop',
   homeIndustry1: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?q=80&w=800&auto=format&fit=crop',
@@ -54,8 +56,8 @@ const defaultContent: SiteContent = {
     heroSubtitle: "Automate your appointment scheduling and handle customer interactions 24/7 with human-like accuracy. Never miss a lead again.",
     aboutTitle: "About Tara Voice Assistant",
     aboutText: "Tara Voice Assistant is a cutting-edge AI-driven solution designed to empower small and medium-sized businesses with the tools they need to streamline customer interactions. It handles appointment scheduling, answers customer inquiries, and manages call-related tasks with human-like accuracy 24/7.",
-    customSections: []
   },
+  customSections: [],
   images: defaultImages
 };
 
@@ -78,20 +80,14 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addCustomSection = (section: CustomSection) => {
     setContent(prev => ({
       ...prev,
-      home: {
-        ...prev.home,
-        customSections: [...prev.home.customSections, section]
-      }
+      customSections: [...prev.customSections, section]
     }));
   };
 
   const removeCustomSection = (id: string) => {
     setContent(prev => ({
       ...prev,
-      home: {
-        ...prev.home,
-        customSections: prev.home.customSections.filter(s => s.id !== id)
-      }
+      customSections: prev.customSections.filter(s => s.id !== id)
     }));
   };
 
