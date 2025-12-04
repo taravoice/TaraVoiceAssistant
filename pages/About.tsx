@@ -1,7 +1,11 @@
 import React from 'react';
 import { Target, Lightbulb, Users, Zap } from 'lucide-react';
+import { useSite } from '../context/SiteContext';
 
 const About: React.FC = () => {
+  const { content } = useSite();
+  const customSections = content.customSections.filter(s => s.page === 'About');
+
   return (
     <div className="bg-[#d9d9d9]">
       {/* Header */}
@@ -87,6 +91,25 @@ const About: React.FC = () => {
            </div>
         </div>
       </div>
+
+      {/* Custom Sections */}
+      {customSections.map((section) => (
+        <section key={section.id} className="py-20 bg-white">
+           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="grid md:grid-cols-2 gap-12 items-center">
+                 <div className="order-2 md:order-1">
+                    <h2 className="text-3xl font-bold text-slate-900 mb-6">{section.title}</h2>
+                    <p className="text-lg text-slate-600 leading-relaxed whitespace-pre-wrap">{section.content}</p>
+                 </div>
+                 {section.image && (
+                   <div className="order-1 md:order-2">
+                      <img src={section.image} alt={section.title} className="rounded-2xl shadow-lg w-full h-auto object-cover" />
+                   </div>
+                 )}
+              </div>
+           </div>
+        </section>
+      ))}
     </div>
   );
 };
