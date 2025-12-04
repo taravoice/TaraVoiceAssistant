@@ -6,6 +6,7 @@ import { useSite } from '../context/SiteContext';
 
 const Features: React.FC = () => {
   const { content } = useSite();
+  const customSections = content.customSections.filter(s => s.page === 'Features');
 
   const featureList = [
     {
@@ -85,6 +86,23 @@ const Features: React.FC = () => {
             </div>
           ))}
         </div>
+
+        {/* Custom Sections */}
+        {customSections.map((section) => (
+          <div key={section.id} className="py-20">
+              <div className="grid md:grid-cols-2 gap-12 items-center">
+                  <div className="order-2 md:order-1">
+                    <h2 className="text-3xl font-bold text-slate-900 mb-6">{section.title}</h2>
+                    <p className="text-lg text-slate-600 leading-relaxed whitespace-pre-wrap">{section.content}</p>
+                  </div>
+                  {section.image && (
+                    <div className="order-1 md:order-2">
+                      <img src={section.image} alt={section.title} className="rounded-2xl shadow-lg w-full h-auto object-cover" />
+                    </div>
+                  )}
+              </div>
+          </div>
+        ))}
 
         <div className="mt-24 text-center bg-[#0097b2]/10 rounded-3xl p-12">
           <h2 className="text-2xl font-bold text-slate-900 mb-6">Ready to upgrade your customer experience?</h2>
