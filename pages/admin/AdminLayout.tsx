@@ -4,7 +4,7 @@ import { LayoutDashboard, FileText, Image as ImageIcon, Settings, LogOut, Extern
 import { useSite } from '../../context/SiteContext';
 
 const AdminLayout: React.FC = () => {
-  const { isAuthenticated, logout } = useSite();
+  const { isAuthenticated, logout, content } = useSite();
   const location = useLocation();
 
   if (!isAuthenticated) {
@@ -23,7 +23,7 @@ const AdminLayout: React.FC = () => {
       {/* Sidebar */}
       <aside className="w-64 bg-slate-900 text-white flex-shrink-0 hidden md:flex flex-col">
         <div className="p-6 border-b border-slate-800 flex items-center space-x-3">
-            <img src="/logo.png" className="h-8 w-auto brightness-0 invert" alt="Logo" />
+            <img src={content.images.logo} className="h-8 w-auto brightness-0 invert" alt="Logo" />
             <span className="font-bold text-lg">Admin</span>
         </div>
         
