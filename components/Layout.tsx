@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Phone, Mail, Facebook, Twitter, Linkedin, Instagram } from 'lucide-react';
 import { Button } from './Button';
+import { useSite } from '../context/SiteContext';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
+  const { content } = useSite();
 
   const navLinks = [
     { label: 'Home', path: '/' },
@@ -28,7 +30,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             {/* Logo */}
             <Link to="/" className="flex items-center group">
               <img 
-                src="/logo.png" 
+                src={content.images.logo} 
                 alt="Tara Voice Assistant" 
                 className="h-12 w-auto object-contain transition-transform group-hover:scale-105" 
               />
@@ -103,7 +105,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <div className="mb-6">
                 {/* Using brightness-0 invert to make the logo white for dark footer */}
                 <img 
-                  src="/logo.png" 
+                  src={content.images.logo} 
                   alt="Tara Voice Assistant" 
                   className="h-10 w-auto object-contain brightness-0 invert opacity-90" 
                 />
