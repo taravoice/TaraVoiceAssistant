@@ -7,6 +7,10 @@ interface CustomSection {
   image?: string;
 }
 
+interface SiteImages {
+  [key: string]: string;
+}
+
 interface SiteContent {
   home: {
     heroTitle: string;
@@ -15,7 +19,7 @@ interface SiteContent {
     aboutText: string;
     customSections: CustomSection[];
   };
-  // Add other pages as needed in the future
+  images: SiteImages;
 }
 
 interface SiteContextType {
@@ -23,10 +27,26 @@ interface SiteContextType {
   updateHomeContent: (key: keyof SiteContent['home'], value: any) => void;
   addCustomSection: (section: CustomSection) => void;
   removeCustomSection: (id: string) => void;
+  updateImage: (key: string, url: string) => void;
   isAuthenticated: boolean;
   login: () => void;
   logout: () => void;
 }
+
+const defaultImages: SiteImages = {
+  // Home Page
+  homeHeroBg: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop',
+  homeIndustry1: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?q=80&w=800&auto=format&fit=crop',
+  homeIndustry2: 'https://images.unsplash.com/photo-1600948836101-f9ffda59d250?q=80&w=800&auto=format&fit=crop',
+  
+  // Features Page
+  feature1: 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?q=80&w=2068&auto=format&fit=crop',
+  feature2: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1740&auto=format&fit=crop',
+  feature3: 'https://images.unsplash.com/photo-1534536281715-e28d76689b4d?q=80&w=2069&auto=format&fit=crop',
+  feature4: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=1974&auto=format&fit=crop',
+  feature5: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1740&auto=format&fit=crop',
+  feature6: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?q=80&w=2070&auto=format&fit=crop',
+};
 
 const defaultContent: SiteContent = {
   home: {
@@ -35,7 +55,8 @@ const defaultContent: SiteContent = {
     aboutTitle: "About Tara Voice Assistant",
     aboutText: "Tara Voice Assistant is a cutting-edge AI-driven solution designed to empower small and medium-sized businesses with the tools they need to streamline customer interactions. It handles appointment scheduling, answers customer inquiries, and manages call-related tasks with human-like accuracy 24/7.",
     customSections: []
-  }
+  },
+  images: defaultImages
 };
 
 const SiteContext = createContext<SiteContextType | undefined>(undefined);
@@ -74,6 +95,16 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   };
 
+  const updateImage = (key: string, url: string) => {
+    setContent(prev => ({
+      ...prev,
+      images: {
+        ...prev.images,
+        [key]: url
+      }
+    }));
+  };
+
   const login = () => setIsAuthenticated(true);
   const logout = () => setIsAuthenticated(false);
 
@@ -83,6 +114,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateHomeContent, 
       addCustomSection, 
       removeCustomSection,
+      updateImage,
       isAuthenticated,
       login,
       logout
