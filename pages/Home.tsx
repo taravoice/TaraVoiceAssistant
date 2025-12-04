@@ -7,6 +7,8 @@ import { useSite } from '../context/SiteContext';
 const Home: React.FC = () => {
   const { content } = useSite();
 
+  const customSections = content.customSections.filter(s => s.page === 'Home');
+
   return (
     <div className="w-full">
       {/* Hero Section */}
@@ -72,7 +74,7 @@ const Home: React.FC = () => {
       </section>
 
       {/* Dynamically Added Custom Sections */}
-      {content.home.customSections.map((section) => (
+      {customSections.map((section) => (
         <section key={section.id} className="py-20 bg-white">
            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="grid md:grid-cols-2 gap-12 items-center">
@@ -132,7 +134,7 @@ const Home: React.FC = () => {
                  {['Healthcare Providers', 'Salons & Spas', 'Home Services', 'Fitness Centers', 'Service-based SMBs'].map((item, i) => (
                    <li key={i} className="flex items-center space-x-3 text-lg font-medium">
                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0097b2] flex items-center justify-center">
-                       <CheckCircle2 className="w-4 h-4 text-white" />
+                       <CheckCircle2 className="w-4 h-4 text-[#0097b2]" />
                      </span>
                      <span>{item}</span>
                    </li>
