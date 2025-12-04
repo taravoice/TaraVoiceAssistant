@@ -11,7 +11,10 @@ const Home: React.FC = () => {
     <div className="w-full">
       {/* Hero Section */}
       <section className="relative bg-[#d9d9d9] overflow-hidden">
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover bg-center opacity-5"></div>
+        <div 
+          className="absolute inset-0 bg-cover bg-center opacity-5 transition-all duration-500"
+          style={{ backgroundImage: `url('${content.images.homeHeroBg}')` }}
+        ></div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-32 relative z-10">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8 animate-fade-in-up">
@@ -137,8 +140,8 @@ const Home: React.FC = () => {
                </ul>
              </div>
              <div className="grid grid-cols-2 gap-4">
-                <img src="https://images.unsplash.com/photo-1629909613654-28e377c37b09?q=80&w=800&auto=format&fit=crop" className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity" alt="Healthcare" />
-                <img src="https://images.unsplash.com/photo-1600948836101-f9ffda59d250?q=80&w=800&auto=format&fit=crop" className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity mt-8" alt="Salon" />
+                <img src={content.images.homeIndustry1} className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity w-full object-cover" alt="Healthcare" />
+                <img src={content.images.homeIndustry2} className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity mt-8 w-full object-cover" alt="Salon" />
              </div>
            </div>
         </div>
@@ -198,8 +201,8 @@ const Home: React.FC = () => {
                  "Easy System Integration"
                ].map((benefit, i) => (
                  <div key={i} className="flex items-center space-x-4 bg-white p-6 rounded-lg shadow-sm">
-                    <div className="flex-shrink-0 w-10 h-10 bg-[#0097b2]/10 rounded-full flex items-center justify-center">
-                       <CheckCircle2 className="w-6 h-6 text-[#0097b2]" />
+                    <div className="flex-shrink-0 w-10 h-10 bg-[#0097b2] rounded-full flex items-center justify-center">
+                       <CheckCircle2 className="w-6 h-6 text-white" />
                     </div>
                     <span className="font-semibold text-slate-800">{benefit}</span>
                  </div>
