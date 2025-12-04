@@ -2,50 +2,53 @@ import React from 'react';
 import { Calendar, Network, Headset, RefreshCw, BarChart, Bot } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Link } from 'react-router-dom';
+import { useSite } from '../context/SiteContext';
 
 const Features: React.FC = () => {
+  const { content } = useSite();
+
   const featureList = [
     {
       id: 1,
       title: "AI Appointment Booking",
       desc: "Our core engine connects directly to your schedule. When a client asks for a slot, Tara checks availability in real-time and books it instantly, sending confirmations to both parties.",
       icon: Calendar,
-      img: "https://images.unsplash.com/photo-1506784983877-45594efa4cbe?q=80&w=2068&auto=format&fit=crop"
+      img: content.images.feature1
     },
     {
       id: 2,
       title: "Dynamic Call Routing",
       desc: "Not every call is for booking. Tara intelligently detects urgency or specific requests (like billing issues) and can route calls to specific departments or take detailed messages.",
       icon: Network,
-      img: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1740&auto=format&fit=crop"
+      img: content.images.feature2
     },
     {
       id: 3,
       title: "Real-time Customer Support",
       desc: "Tara is trained on your specific business knowledge base. She answers FAQs about pricing, location, services, and preparation instructions instantly.",
       icon: Headset,
-      img: "https://images.unsplash.com/photo-1534536281715-e28d76689b4d?q=80&w=2069&auto=format&fit=crop"
+      img: content.images.feature3
     },
     {
       id: 4,
       title: "Calendar (Cal.com) Sync",
       desc: "We prioritize seamless integration. Changes made in your Cal.com calendar are immediately reflected in Tara's availability, preventing double bookings.",
       icon: RefreshCw,
-      img: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=1974&auto=format&fit=crop"
+      img: content.images.feature4
     },
     {
       id: 5,
       title: "Call Analytics & Insights",
       desc: "Gain visibility into your business. Dashboard reports show peak call times, missed opportunities, and common customer questions to help you optimize operations.",
       icon: BarChart,
-      img: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1740&auto=format&fit=crop"
+      img: content.images.feature5
     },
     {
       id: 6,
       title: "Human-like Conversational Engine",
       desc: "Utilizing advanced LLMs, Tara speaks with natural pauses, intonation, and understanding, creating a comfortable experience for your callers.",
       icon: Bot,
-      img: "https://images.unsplash.com/photo-1677442136019-21780ecad995?q=80&w=2070&auto=format&fit=crop"
+      img: content.images.feature6
     }
   ];
 
