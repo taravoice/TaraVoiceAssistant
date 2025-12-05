@@ -6,6 +6,7 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [usingMockData, setUsingMockData] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   // SIMULATED DATA (Fallback)
   const mockStats = {
@@ -67,6 +68,7 @@ const Dashboard: React.FC = () => {
         } else {
           console.warn("API Error:", data);
           setApiError(data.error || data.message || "Unknown API Error");
+          setDebugInfo(data.debug);
           setStats(mockStats);
           setUsingMockData(true);
         }
@@ -106,9 +108,16 @@ const Dashboard: React.FC = () => {
              <p>
                Error: <span className="font-mono bg-amber-100 px-1 rounded font-bold">{apiError}</span>
              </p>
-             <div className="text-xs text-amber-700 space-y-1">
+             {debugInfo && (
+                <div className="text-xs font-mono bg-white/50 p-2 rounded w-full">
+                    <p>Debug Info:</p>
+                    <p>Project ID: {debugInfo.projectIdConfigured}</p>
+                    <p>Has Team ID: {debugInfo.hasTeamId ? 'Yes' : 'No'}</p>
+                </div>
+             )}
+             <div className="text-xs text-amber-700 space-y-1 mt-2">
                <p>• If error is <code>forbidden</code>: Add <code>VERCEL_TEAM_ID</code> to Env Vars.</p>
-               <p>• If error is <code>configuration_error</code>: Check API Token & Project ID.</p>
+               <p>• If error is <code>not_found</code>: Check Project ID match.</p>
                <p>• If error is <code>Local Proxy Error</code>: Restart <code>npm run dev</code>.</p>
              </div>
           </div>
