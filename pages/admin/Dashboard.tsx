@@ -41,20 +41,20 @@ const Dashboard: React.FC = () => {
     const fetchData = async () => {
       try {
         const res = await fetch('/api/stats');
+        
+        // Verify we got JSON back. If the API route is blocked/rewritten, we might get HTML.
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+           throw new Error("Received non-JSON response (API route likely missing or rewritten)");
+        }
+
         const data = await res.json();
 
         if (res.ok && !data.error) {
-          // If we got real data, map it here. 
-          // Since the Vercel API response shape varies, we'll keep using mock structure 
-          // populated with real numbers if available, or just log the real data for now.
-          // For this specific UI, we will assume if the API works, we would parse `data`.
-          // HOWEVER, to prevent breaking the UI layout if the API returns a different shape,
-          // we will default to mock data but update the flag.
           console.log("Real Analytics Data:", data);
-          setStats(mockStats); 
+          setStats(mockStats); // Still mock layout for now, but successful fetch confirmed
           setUsingMockData(false);
         } else {
-          // Fallback to mock data if API keys missing or error
           console.warn("Using simulated data due to API status:", res.status);
           setStats(mockStats);
           setUsingMockData(true);
