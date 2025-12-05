@@ -18,12 +18,20 @@ export default async function handler(req, res) {
   const projectId = process.env.VERCEL_PROJECT_ID;
   const teamId = process.env.VERCEL_TEAM_ID;
 
-  console.log("API Invoked. Project:", projectId ? "Found" : "Missing");
+  // Debug info to help user
+  const debugInfo = {
+    hasToken: !!token,
+    projectIdConfigured: projectId || 'MISSING',
+    hasTeamId: !!teamId
+  };
+
+  console.log("API Invoked. Debug:", debugInfo);
 
   if (!token || !projectId) {
     return res.status(500).json({ 
       error: 'configuration_error', 
-      message: 'Missing VERCEL_API_TOKEN or VERCEL_PROJECT_ID in Environment Variables.' 
+      message: 'Missing VERCEL_API_TOKEN or VERCEL_PROJECT_ID in Environment Variables.',
+      debug: debugInfo
     });
   }
 
@@ -53,10 +61,15 @@ export default async function handler(req, res) {
         // Forward the specific error code from Vercel (e.g., 'forbidden')
         return res.status(response.status).json({ 
           error: errorJson.error?.code || 'vercel_api_error',
-          message: errorJson.error?.message || 'Failed to fetch data from Vercel.' 
+          message: errorJson.error?.message || 'Failed to fetch data from Vercel.',
+          debug: debugInfo
         });
       } catch (e) {
-        return res.status(response.status).json({ error: 'vercel_api_error', details: errorText });
+        return res.status(response.status).json({ 
+            error: 'vercel_api_error', 
+            details: errorText,
+            debug: debugInfo 
+        });
       }
     }
 
@@ -65,6 +78,10 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Serverless Execution Error:', error);
-    return res.status(500).json({ error: 'internal_server_error', message: error.message });
+    return res.status(500).json({ 
+        error: 'internal_server_error', 
+        message: error.message,
+        debug: debugInfo
+    });
   }
 }
