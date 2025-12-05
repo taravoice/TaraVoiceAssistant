@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { storage } from '../firebase';
+import { ref, uploadBytes, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
 
 export interface CustomSection {
   id: string;
@@ -21,6 +23,7 @@ interface SiteContent {
   };
   customSections: CustomSection[];
   images: SiteImages;
+  gallery: string[]; // List of available image URLs
 }
 
 interface SiteContextType {
@@ -29,7 +32,10 @@ interface SiteContextType {
   addCustomSection: (section: CustomSection) => void;
   removeCustomSection: (id: string) => void;
   updateImage: (key: string, url: string) => void;
+  uploadToGallery: (file: File) => Promise<void>;
+  removeFromGallery: (url: string) => Promise<void>;
   isAuthenticated: boolean;
+  isStorageConfigured: boolean;
   login: () => void;
   logout: () => void;
 }
@@ -50,6 +56,12 @@ const defaultImages: SiteImages = {
   feature6: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?q=80&w=2070&auto=format&fit=crop',
 };
 
+// Default system images to always show in gallery
+const systemGallery = [
+  '/logo.png',
+  ...Object.values(defaultImages).filter(url => url.startsWith('http'))
+];
+
 const defaultContent: SiteContent = {
   home: {
     heroTitle: "AI Appointment Setter for Your Business",
@@ -58,7 +70,8 @@ const defaultContent: SiteContent = {
     aboutText: "Tara Voice Assistant is a cutting-edge AI-driven solution designed to empower small and medium-sized businesses with the tools they need to streamline customer interactions. It handles appointment scheduling, answers customer inquiries, and manages call-related tasks with human-like accuracy 24/7.",
   },
   customSections: [],
-  images: defaultImages
+  images: defaultImages,
+  gallery: systemGallery
 };
 
 const SiteContext = createContext<SiteContextType | undefined>(undefined);
@@ -66,6 +79,39 @@ const SiteContext = createContext<SiteContextType | undefined>(undefined);
 export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [content, setContent] = useState<SiteContent>(defaultContent);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isStorageConfigured, setIsStorageConfigured] = useState(false);
+
+  // Fetch Firebase Images on Mount
+  useEffect(() => {
+    const fetchGallery = async () => {
+      // Guard: If storage is null (keys missing), stop here to prevent crash
+      if (!storage) {
+        setIsStorageConfigured(false);
+        return;
+      }
+
+      setIsStorageConfigured(true);
+
+      try {
+        const listRef = ref(storage, 'gallery/');
+        const res = await listAll(listRef);
+        
+        const urls = await Promise.all(
+          res.items.map((itemRef) => getDownloadURL(itemRef))
+        );
+
+        setContent(prev => ({
+          ...prev,
+          gallery: [...systemGallery, ...urls]
+        }));
+      } catch (error) {
+        console.error("Error fetching gallery:", error);
+        // If config is missing or error, we just fallback to default gallery
+      }
+    };
+
+    fetchGallery();
+  }, []);
 
   const updateHomeContent = (key: keyof SiteContent['home'], value: any) => {
     setContent(prev => ({
@@ -101,6 +147,50 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   };
 
+  // Upload to Firebase Storage
+  const uploadToGallery = async (file: File): Promise<void> => {
+    if (!storage) {
+      alert("Firebase connection missing. Check your API keys.");
+      return;
+    }
+
+    try {
+      const storageRef = ref(storage, `gallery/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+
+      setContent(prev => ({
+        ...prev,
+        gallery: [downloadURL, ...prev.gallery]
+      }));
+    } catch (error) {
+      console.error("Upload failed", error);
+      throw error;
+    }
+  };
+
+  // Remove from Firebase Storage
+  const removeFromGallery = async (url: string) => {
+     if (!storage) return;
+
+     try {
+       // Only try to delete if it's a firebase URL
+       if (url.includes('firebasestorage.googleapis.com')) {
+         // Create a reference from the URL
+         const storageRef = ref(storage, url);
+         await deleteObject(storageRef);
+       }
+
+       setContent(prev => ({
+          ...prev,
+          gallery: prev.gallery.filter(item => item !== url)
+       }));
+     } catch (error) {
+       console.error("Delete failed", error);
+       alert("Failed to delete image. Check console.");
+     }
+  };
+
   const login = () => setIsAuthenticated(true);
   const logout = () => setIsAuthenticated(false);
 
@@ -111,7 +201,10 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addCustomSection, 
       removeCustomSection,
       updateImage,
+      uploadToGallery,
+      removeFromGallery,
       isAuthenticated,
+      isStorageConfigured,
       login,
       logout
     }}>
