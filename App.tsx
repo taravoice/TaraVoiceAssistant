@@ -10,6 +10,7 @@ import Contact from './pages/Contact';
 // Admin Imports
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminLayout from './pages/admin/AdminLayout';
+import Dashboard from './pages/admin/Dashboard';
 import ContentManager from './pages/admin/ContentManager';
 import MediaManager from './pages/admin/MediaManager';
 import Gallery from './pages/admin/Gallery';
@@ -34,7 +35,7 @@ function App() {
           {/* Admin Routes (Standalone Layout) */}
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin" element={<AdminLayout />}>
-             <Route path="dashboard" element={<div className="text-slate-600">Welcome to your dashboard! Select an option from the sidebar.</div>} />
+             <Route path="dashboard" element={<Dashboard />} />
              <Route path="content" element={<ContentManager />} />
              <Route path="media" element={<MediaManager />} />
              <Route path="gallery" element={<Gallery />} />
