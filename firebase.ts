@@ -12,7 +12,12 @@ const getEnv = (key: string) => {
 };
 
 const apiKey = getEnv('VITE_FIREBASE_API_KEY');
-const bucket = getEnv('VITE_FIREBASE_STORAGE_BUCKET');
+let bucket = getEnv('VITE_FIREBASE_STORAGE_BUCKET');
+
+// CLEANER: Remove gs:// or protocols if user added them by mistake
+if (bucket) {
+  bucket = bucket.replace(/^gs:\/\//, '').replace(/^https?:\/\//, '');
+}
 
 let storage: FirebaseStorage | null = null;
 
