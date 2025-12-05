@@ -36,15 +36,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    // We request data for the last 30 days
-    let url = `https://api.vercel.com/v1/analytics/stats?projectId=${projectId}&from=30d`;
+    // Attempting to hit the standard Analytics endpoint.
+    // Note: This endpoint is subject to Vercel's API availability.
+    let url = `https://api.vercel.com/v1/analytics/stats?projectId=${projectId}&from=30d&environment=production`;
     
     // Append Team ID if present (Required for Team/Pro accounts)
     if (teamId) {
       url += `&teamId=${teamId}`;
     }
     
-    console.log("Fetching from Vercel API...");
+    console.log(`Fetching from Vercel API: ${url.replace(token, '[REDACTED]')}`);
 
     const response = await fetch(url, {
       headers: {
@@ -58,7 +59,6 @@ export default async function handler(req, res) {
       
       try {
         const errorJson = JSON.parse(errorText);
-        // Forward the specific error code from Vercel (e.g., 'forbidden')
         return res.status(response.status).json({ 
           error: errorJson.error?.code || 'vercel_api_error',
           message: errorJson.error?.message || 'Failed to fetch data from Vercel.',
