@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { X, Check, Upload } from 'lucide-react';
 import { Button } from './Button';
+import { useSite } from '../context/SiteContext';
 
 interface ImageGalleryModalProps {
   isOpen: boolean;
@@ -8,26 +9,25 @@ interface ImageGalleryModalProps {
   onSelect: (url: string) => void;
 }
 
-// Mock Library Images
-const libraryImages = [
-  '/logo.png',
-  'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1629909613654-28e377c37b09?q=80&w=800&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1600948836101-f9ffda59d250?q=80&w=800&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?q=80&w=2068&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1740&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1534536281715-e28d76689b4d?q=80&w=2069&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=1974&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1677442136019-21780ecad995?q=80&w=2070&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1552664730-d307ca884978?q=80&w=2070&auto=format&fit=crop',
-  'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=1965&auto=format&fit=crop',
-];
-
 export const ImageGalleryModal: React.FC<ImageGalleryModalProps> = ({ isOpen, onClose, onSelect }) => {
+  const { content, uploadToGallery, isStorageConfigured } = useSite();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   if (!isOpen) return null;
 
-  const handleUpload = () => {
-    alert("In a real app, this would open a file picker to upload a new image.");
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        await uploadToGallery(file);
+      } catch (e) {
+        alert("Upload failed. Check console for details.");
+      }
+    }
   };
 
   return (
@@ -43,13 +43,24 @@ export const ImageGalleryModal: React.FC<ImageGalleryModalProps> = ({ isOpen, on
         <div className="p-6 flex-1 overflow-y-auto">
           <div className="flex justify-between items-center mb-6">
              <h3 className="font-semibold text-slate-700">Media Library</h3>
-             <Button onClick={handleUpload} size="sm" variant="outline" className="flex items-center">
-                <Upload className="w-4 h-4 mr-2" /> Upload New
-             </Button>
+             <div>
+               <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  accept="image/*"
+                  onChange={handleFileChange}
+               />
+               {isStorageConfigured && (
+                 <Button onClick={handleUploadClick} size="sm" variant="outline" className="flex items-center">
+                    <Upload className="w-4 h-4 mr-2" /> Upload New
+                 </Button>
+               )}
+             </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-             {libraryImages.map((url, idx) => (
+             {content.gallery.map((url, idx) => (
                <div 
                  key={idx}
                  onClick={() => onSelect(url)}
