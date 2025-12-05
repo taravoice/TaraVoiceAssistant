@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { storage } from '../firebase';
-import { ref, uploadBytes, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, listAll, deleteObject, uploadString } from 'firebase/storage';
 
 export interface CustomSection {
   id: string;
@@ -34,6 +34,7 @@ interface SiteContextType {
   updateImage: (key: string, url: string) => void;
   uploadToGallery: (file: File) => Promise<void>;
   removeFromGallery: (url: string) => Promise<void>;
+  logVisit: (path: string) => Promise<void>;
   isAuthenticated: boolean;
   isStorageConfigured: boolean;
   login: () => void;
@@ -205,6 +206,63 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      }
   };
 
+  // ------------------------------------------------------------------
+  // ANALYTICS LOGGING
+  // ------------------------------------------------------------------
+  const logVisit = async (path: string) => {
+    if (!storage) return;
+    
+    // Don't log admin pages
+    if (path.startsWith('/admin')) return;
+
+    // Session Management (Simple)
+    let sessionId = sessionStorage.getItem('tara_session_id');
+    if (!sessionId) {
+      sessionId = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      sessionStorage.setItem('tara_session_id', sessionId);
+    }
+
+    try {
+      // 1. Get Country (Free API)
+      // Note: This might block on some adblockers, so we wrap in try/catch
+      let country = 'Unknown';
+      try {
+        const geoRes = await fetch('https://api.country.is');
+        if (geoRes.ok) {
+           const geoData = await geoRes.json();
+           country = geoData.country;
+        }
+      } catch (e) {
+        // Fallback to timezone guess if fetch fails
+        country = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/')[0];
+      }
+
+      // 2. Prepare Log Data
+      const logData = {
+        path,
+        timestamp: Date.now(),
+        sessionId,
+        country,
+        userAgent: navigator.userAgent,
+        screen: `${window.screen.width}x${window.screen.height}`,
+        language: navigator.language
+      };
+
+      // 3. Upload Log to Firebase 'analytics/logs/'
+      // We use a timestamp-random filename to avoid collisions
+      const filename = `analytics/logs/${Date.now()}_${Math.random().toString(36).substr(2, 5)}.json`;
+      const logRef = ref(storage, filename);
+      
+      // Upload as string (lightweight)
+      await uploadString(logRef, JSON.stringify(logData), 'raw', {
+        contentType: 'application/json'
+      });
+      
+    } catch (err) {
+      console.error("Analytics logging failed silently:", err);
+    }
+  };
+
   const login = () => setIsAuthenticated(true);
   const logout = () => setIsAuthenticated(false);
 
@@ -217,6 +275,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateImage,
       uploadToGallery,
       removeFromGallery,
+      logVisit,
       isAuthenticated,
       isStorageConfigured,
       login,
