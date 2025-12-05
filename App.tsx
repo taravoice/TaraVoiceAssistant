@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import About from './pages/About';
@@ -38,26 +39,4 @@ function App() {
              <Route path="dashboard" element={<Dashboard />} />
              <Route path="content" element={<ContentManager />} />
              <Route path="media" element={<MediaManager />} />
-             <Route path="gallery" element={<Gallery />} />
-             <Route path="settings" element={<div className="text-slate-600">Settings placeholder.</div>} />
-          </Route>
-
-          {/* Public Website Routes (Main Layout) */}
-          <Route path="*" element={
-            <Layout>
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/about" element={<About />} />
-                <Route path="/features" element={<Features />} />
-                <Route path="/pricing" element={<Pricing />} />
-                <Route path="/contact" element={<Contact />} />
-              </Routes>
-            </Layout>
-          } />
-        </Routes>
-      </Router>
-    </SiteProvider>
-  );
-}
-
-export default App;
+             <Route pat
