@@ -1,51 +1,140 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Eye, Activity, Globe, Smartphone, Monitor, Command, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Users, Eye, Activity, Globe, Smartphone, Command, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { storage } from '../../firebase';
+import { ref, listAll, getDownloadURL } from 'firebase/storage';
 
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [apiError, setApiError] = useState<string | null>(null);
-  const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchAnalytics = async () => {
+    if (!storage) {
+        setError("Firebase Storage not configured.");
+        setLoading(false);
+        return;
+    }
+
     setLoading(true);
-    setApiError(null);
+    setError(null);
+
     try {
-      const res = await fetch('/api/stats');
+      // 1. List all log files in the 'analytics/logs' folder
+      // In a real production environment with millions of logs, you would use a Cloud Function.
+      // For this "Budget" solution, listing ~1000 logs is fine client-side.
+      const listRef = ref(storage, 'analytics/logs/');
+      const res = await listAll(listRef);
       
-      // Check for HTML response (common 404/500 issue in SPAs)
-      const contentType = res.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-          // If we are local and see HTML, it usually means the proxy failed or isn't set up
-          if (window.location.hostname === 'localhost') {
-            throw new Error("Local Proxy Error: API returned HTML. Check vite.config.ts.");
+      if (res.items.length === 0) {
+          setStats(getEmptyStats());
+          setLoading(false);
+          return;
+      }
+
+      // 2. Limit to last 200 logs to ensure dashboard loads fast
+      // Sorted roughly by time because Firebase lists alphabetically and we use timestamp filenames
+      const recentLogs = res.items.slice(-200); 
+
+      // 3. Download and parse each log file
+      const logPromises = recentLogs.map(async (itemRef) => {
+          const url = await getDownloadURL(itemRef);
+          try {
+            const response = await fetch(url);
+            return await response.json();
+          } catch (e) {
+            return null; // Ignore corrupted logs
           }
-          throw new Error("API Endpoint Not Found (404). Function may not be deployed.");
-      }
+      });
 
-      const data = await res.json();
+      const logs = (await Promise.all(logPromises)).filter(l => l !== null);
 
-      if (res.ok && !data.error) {
-        console.log("Real Analytics Data Received:", data);
-        setStats(data);
+      // 4. Process logs into Stats
+      const aggregated = processLogs(logs);
+      setStats(aggregated);
+
+    } catch (err: any) {
+      console.error("Analytics fetch error:", err);
+      // Fallback: If folder doesn't exist yet, just show empty
+      if (err.code === 'storage/object-not-found') {
+          setStats(getEmptyStats());
       } else {
-        console.warn("API Error:", data);
-        setApiError(data.error || data.message || "Unknown API Error");
-        setDebugInfo(data.debug);
-        setStats(null);
+          setError(err.message || "Failed to load analytics");
       }
-    } catch (error: any) {
-      console.error("Failed to fetch stats", error);
-      setApiError(error.message);
-      setStats(null);
     } finally {
       setLoading(false);
     }
   };
 
+  const processLogs = (logs: any[]) => {
+      let pageViews = logs.length;
+      
+      // Count Unique Sessions
+      const sessions = new Set();
+      const countries: Record<string, number> = {};
+      const devices: Record<string, number> = {};
+      const os: Record<string, number> = {};
+
+      logs.forEach(log => {
+          if (log.sessionId) sessions.add(log.sessionId);
+          
+          // Country
+          const c = log.country || 'Unknown';
+          countries[c] = (countries[c] || 0) + 1;
+
+          // Device/OS Parsing (Basic)
+          const ua = (log.userAgent || '').toLowerCase();
+          
+          // Device
+          let device = 'Desktop';
+          if (ua.includes('mobile')) device = 'Mobile';
+          else if (ua.includes('tablet') || ua.includes('ipad')) device = 'Tablet';
+          devices[device] = (devices[device] || 0) + 1;
+
+          // OS
+          let system = 'Other';
+          if (ua.includes('windows')) system = 'Windows';
+          else if (ua.includes('mac') && !ua.includes('iphone')) system = 'MacOS';
+          else if (ua.includes('android')) system = 'Android';
+          else if (ua.includes('iphone') || ua.includes('ipad')) system = 'iOS';
+          else if (ua.includes('linux')) system = 'Linux';
+          os[system] = (os[system] || 0) + 1;
+      });
+
+      const visitors = sessions.size;
+
+      // Calculate percentages for charts
+      const formatPie = (obj: Record<string, number>) => {
+          const total = Object.values(obj).reduce((a, b) => a + b, 0);
+          return Object.entries(obj)
+            .map(([name, count]) => ({ name, value: Math.round((count / total) * 100) }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 5); // Top 5 only
+      };
+
+      return {
+          visitors,
+          pageViews,
+          bounceRate: "0", 
+          countries: formatPie(countries),
+          devices: formatPie(devices),
+          os: formatPie(os)
+      };
+  };
+
+  const getEmptyStats = () => ({
+      visitors: 0,
+      pageViews: 0,
+      bounceRate: 0,
+      countries: [],
+      devices: [],
+      os: []
+  });
+
   useEffect(() => {
-    fetchData();
+    fetchAnalytics();
   }, []);
+
+  const getVal = (val: any) => val || 0;
 
   if (loading) {
     return (
@@ -55,61 +144,27 @@ const Dashboard: React.FC = () => {
     );
   }
 
-  if (apiError) {
-    return (
-      <div className="max-w-4xl mx-auto mt-8">
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-red-800">
-          <div className="flex items-center mb-4">
-            <AlertTriangle className="w-6 h-6 mr-3 text-red-600" />
-            <h2 className="text-xl font-bold">Analytics Connection Failed</h2>
-          </div>
-          <p className="mb-4">
-            The dashboard could not fetch real-time data from Vercel. 
-            <br/><span className="text-sm opacity-80">Error: {apiError}</span>
-          </p>
-          
-          {debugInfo && (
-            <div className="bg-white/50 p-4 rounded-lg font-mono text-xs mb-4">
-              <p><strong>Debug Info:</strong></p>
-              <p>Project ID Configured: {debugInfo.projectIdConfigured}</p>
-              <p>Has Team ID: {debugInfo.hasTeamId ? 'Yes' : 'No'}</p>
-            </div>
-          )}
-
-          <div className="text-sm space-y-2 mb-6">
-            <p><strong>Troubleshooting:</strong></p>
-            <ul className="list-disc list-inside ml-2">
-              <li>Ensure <code>VERCEL_API_TOKEN</code> and <code>VERCEL_PROJECT_ID</code> are set in Vercel Environment Variables.</li>
-              <li>If you are on a Team, ensure <code>VERCEL_TEAM_ID</code> is also set.</li>
-              <li>Make sure "Web Analytics" is enabled in your Vercel Project Dashboard.</li>
-            </ul>
-          </div>
-
-          <button 
-            onClick={fetchData} 
-            className="flex items-center px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 rounded-lg transition-colors font-semibold"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" /> Retry Connection
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Helper to safely get data or show 0
-  const getVal = (val: any) => val || 0;
-
   return (
     <div className="max-w-6xl mx-auto space-y-8">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-slate-500">Real-time overview of your website traffic.</p>
+          <h1 className="text-3xl font-bold text-slate-900">Analytics Dashboard</h1>
+          <p className="text-slate-500">Real-time data sourced from Firebase Logs.</p>
         </div>
-        <button onClick={fetchData} className="p-2 text-slate-400 hover:text-[#0097b2] transition-colors" title="Refresh Data">
+        <button onClick={fetchAnalytics} className="p-2 text-slate-400 hover:text-[#0097b2] transition-colors" title="Refresh Data">
           <RefreshCw className="w-5 h-5" />
         </button>
       </div>
+
+      {error && (
+        <div className="bg-amber-50 text-amber-800 p-4 rounded-lg flex items-center">
+            <AlertTriangle className="w-5 h-5 mr-2" />
+            {error === "Firebase Storage not configured." 
+                ? "Storage not connected. Please add Firebase keys to Vercel Environment Variables."
+                : `Error: ${error}`
+            }
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
@@ -118,18 +173,14 @@ const Dashboard: React.FC = () => {
            <h2 className="text-lg font-bold text-slate-900 mb-6 flex items-center">
              <Activity className="w-5 h-5 mr-2 text-[#0097b2]" /> Traffic Overview
            </h2>
-           <div className="grid grid-cols-3 gap-4">
+           <div className="grid grid-cols-2 gap-4">
               <div className="text-center p-4 bg-slate-50 rounded-lg">
-                 <div className="text-slate-500 text-sm mb-1 flex justify-center items-center"><Users className="w-4 h-4 mr-1"/> Visitors</div>
+                 <div className="text-slate-500 text-sm mb-1 flex justify-center items-center"><Users className="w-4 h-4 mr-1"/> Unique Visitors</div>
                  <div className="text-2xl font-bold text-slate-900">{getVal(stats?.visitors)}</div>
               </div>
               <div className="text-center p-4 bg-slate-50 rounded-lg">
-                 <div className="text-slate-500 text-sm mb-1 flex justify-center items-center"><Eye className="w-4 h-4 mr-1"/> Views</div>
+                 <div className="text-slate-500 text-sm mb-1 flex justify-center items-center"><Eye className="w-4 h-4 mr-1"/> Total Page Views</div>
                  <div className="text-2xl font-bold text-slate-900">{getVal(stats?.pageViews)}</div>
-              </div>
-              <div className="text-center p-4 bg-slate-50 rounded-lg">
-                 <div className="text-slate-500 text-sm mb-1">Bounce Rate</div>
-                 <div className="text-2xl font-bold text-slate-900">{getVal(stats?.bounceRate)}%</div>
               </div>
            </div>
         </div>
@@ -137,27 +188,26 @@ const Dashboard: React.FC = () => {
         {/* WINDOW 2: Countries */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
            <h2 className="text-lg font-bold text-slate-900 mb-6 flex items-center">
-             <Globe className="w-5 h-5 mr-2 text-[#0097b2]" /> Top Countries
+             <Globe className="w-5 h-5 mr-2 text-[#0097b2]" /> Top Locations
            </h2>
            {stats?.countries && stats.countries.length > 0 ? (
-             <div className="space-y-4">
+             <div className="space-y-4 max-h-60 overflow-y-auto">
                 {stats.countries.map((country: any, idx: number) => (
                   <div key={idx} className="flex items-center">
-                     <span className="text-xl mr-3 w-6">{country.flag || '🏳️'}</span>
-                     <div className="flex-1">
-                        <div className="flex justify-between text-sm mb-1">
-                           <span className="font-medium text-slate-700">{country.name || country.code}</span>
-                           <span className="text-slate-500">{country.value}%</span>
-                        </div>
+                     <span className="text-sm font-bold text-slate-900 w-16 truncate">{country.name}</span>
+                     <div className="flex-1 mx-3">
                         <div className="w-full bg-slate-100 rounded-full h-2">
                            <div className="bg-[#0097b2] h-2 rounded-full" style={{ width: `${country.value}%` }}></div>
                         </div>
                      </div>
+                     <span className="text-xs text-slate-500">{country.value}%</span>
                   </div>
                 ))}
              </div>
            ) : (
-             <div className="text-center text-slate-400 py-8">No country data available yet.</div>
+             <div className="text-center text-slate-400 py-8">
+                {stats?.pageViews > 0 ? "Parsing location data..." : "Waiting for visitors..."}
+             </div>
            )}
         </div>
 
@@ -167,24 +217,16 @@ const Dashboard: React.FC = () => {
              <Smartphone className="w-5 h-5 mr-2 text-[#0097b2]" /> Devices
            </h2>
            {stats?.devices && stats.devices.length > 0 ? (
-             <>
-               <div className="flex items-center justify-around mb-6">
-                  {stats.devices.map((device: any, idx: number) => (
-                     <div key={idx} className="text-center">
-                        <div className={`w-3 h-3 rounded-full mx-auto mb-2`} style={{ backgroundColor: idx === 0 ? '#0097b2' : '#cbd5e1' }}></div>
-                        <span className="text-sm font-bold text-slate-700">{device.value}%</span>
-                        <span className="block text-xs text-slate-500">{device.name}</span>
-                     </div>
-                  ))}
-               </div>
-               <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden flex">
-                  {stats.devices.map((device: any, idx: number) => (
-                     <div key={idx} className="h-full" style={{ width: `${device.value}%`, backgroundColor: idx === 0 ? '#0097b2' : '#cbd5e1' }}></div>
-                  ))}
-               </div>
-             </>
+             <div className="flex items-center justify-around">
+                {stats.devices.map((device: any, idx: number) => (
+                   <div key={idx} className="text-center">
+                      <div className="text-2xl font-bold text-slate-900">{device.value}%</div>
+                      <div className="text-sm text-slate-500">{device.name}</div>
+                   </div>
+                ))}
+             </div>
            ) : (
-             <div className="text-center text-slate-400 py-8">No device data available yet.</div>
+             <div className="text-center text-slate-400 py-8">Waiting for data...</div>
            )}
         </div>
 
@@ -194,18 +236,16 @@ const Dashboard: React.FC = () => {
              <Command className="w-5 h-5 mr-2 text-[#0097b2]" /> Operating Systems
            </h2>
            {stats?.os && stats.os.length > 0 ? (
-             <div className="space-y-4">
+             <div className="space-y-2">
                 {stats.os.map((item: any, idx: number) => (
-                  <div key={idx} className="flex items-center justify-between border-b border-slate-50 pb-2 last:border-0">
-                     <div className="flex items-center">
-                        <span className="text-sm font-medium text-slate-700">{item.name}</span>
-                     </div>
-                     <span className="text-sm font-bold text-slate-900">{item.value}%</span>
+                  <div key={idx} className="flex justify-between items-center border-b border-slate-50 py-2">
+                     <span className="text-sm text-slate-700">{item.name}</span>
+                     <span className="font-bold text-[#0097b2]">{item.value}%</span>
                   </div>
                 ))}
              </div>
            ) : (
-             <div className="text-center text-slate-400 py-8">No OS data available yet.</div>
+             <div className="text-center text-slate-400 py-8">Waiting for data...</div>
            )}
         </div>
 
