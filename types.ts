@@ -1,24 +1,26 @@
-import { LucideIcon } from 'lucide-react';
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
 
-export interface NavItem {
-  label: string;
-  path: string;
-}
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
 
-export interface Feature {
-  title: string;
-  description: string;
-  icon: LucideIcon;
-}
-
-export interface PricingTier {
-  name: string;
-  price: string;
-  features: string[];
-  isPopular?: boolean;
-}
-
-export interface FaqItem {
-  question: string;
-  answer: string;
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["node"]
+  },
+  "include": ["./**/*.ts", "./**/*.tsx"],
+  "exclude": ["api"]
 }
