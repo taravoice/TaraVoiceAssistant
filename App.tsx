@@ -39,4 +39,27 @@ function App() {
              <Route path="dashboard" element={<Dashboard />} />
              <Route path="content" element={<ContentManager />} />
              <Route path="media" element={<MediaManager />} />
-             <Route pat
+             <Route path="gallery" element={<Gallery />} />
+             <Route path="settings" element={<div className="text-slate-600">Settings placeholder.</div>} />
+          </Route>
+
+          {/* Public Website Routes (Main Layout) */}
+          <Route path="*" element={
+            <Layout>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/features" element={<Features />} />
+                <Route path="/pricing" element={<Pricing />} />
+                <Route path="/contact" element={<Contact />} />
+              </Routes>
+            </Layout>
+          } />
+        </Routes>
+        <Analytics />
+      </Router>
+    </SiteProvider>
+  );
+}
+
+export default App;
