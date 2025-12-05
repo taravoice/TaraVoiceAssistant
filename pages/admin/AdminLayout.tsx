@@ -1,10 +1,10 @@
 import React from 'react';
 import { Link, useLocation, Navigate, Outlet } from 'react-router-dom';
-import { LayoutDashboard, FileText, Image as ImageIcon, Settings, LogOut, ExternalLink } from 'lucide-react';
+import { LayoutDashboard, FileText, Image as ImageIcon, Settings, LogOut, ExternalLink, Grid, AlertTriangle } from 'lucide-react';
 import { useSite } from '../../context/SiteContext';
 
 const AdminLayout: React.FC = () => {
-  const { isAuthenticated, logout, content } = useSite();
+  const { isAuthenticated, logout, content, isStorageConfigured } = useSite();
   const location = useLocation();
 
   if (!isAuthenticated) {
@@ -15,6 +15,7 @@ const AdminLayout: React.FC = () => {
     { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
     { label: 'Content Editor', path: '/admin/content', icon: FileText },
     { label: 'Media Manager', path: '/admin/media', icon: ImageIcon },
+    { label: 'Gallery', path: '/admin/gallery', icon: Grid },
     { label: 'Settings', path: '/admin/settings', icon: Settings },
   ];
 
@@ -65,6 +66,16 @@ const AdminLayout: React.FC = () => {
             <span className="font-bold">Tara Admin</span>
             <button onClick={logout} className="text-slate-500"><LogOut className="w-5 h-5" /></button>
         </header>
+
+        {!isStorageConfigured && (
+          <div className="bg-amber-50 border-b border-amber-200 px-8 py-3 flex items-center text-amber-800 text-sm">
+            <AlertTriangle className="w-4 h-4 mr-2" />
+            <span>
+              <strong>Storage not connected:</strong> Image uploads are disabled. Add your Firebase keys in Vercel to enable the Gallery.
+            </span>
+          </div>
+        )}
+
         <main className="flex-1 overflow-auto p-8">
           <Outlet />
         </main>
