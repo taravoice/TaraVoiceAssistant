@@ -4,7 +4,7 @@ import { Button } from '../../components/Button';
 import { Upload, Trash2, Copy, AlertCircle, Loader2 } from 'lucide-react';
 
 const Gallery: React.FC = () => {
-  const { content, uploadToGallery, removeFromGallery } = useSite();
+  const { content, uploadToGallery, removeFromGallery, isStorageConfigured } = useSite();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -55,7 +55,7 @@ const Gallery: React.FC = () => {
             accept="image/*"
             onChange={handleFileChange}
           />
-          <Button onClick={handleUploadClick} size="lg" className="flex items-center" disabled={isUploading}>
+          <Button onClick={handleUploadClick} size="lg" className="flex items-center" disabled={isUploading || !isStorageConfigured}>
             {isUploading ? (
                 <>
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" /> Uploading...
@@ -75,9 +75,11 @@ const Gallery: React.FC = () => {
             <Upload className="w-12 h-12 text-slate-300 mx-auto mb-4" />
             <p className="text-slate-500 font-medium">No images uploaded yet.</p>
             <p className="text-slate-400 text-sm mt-2">If you have keys configured, try uploading now.</p>
-            <button onClick={handleUploadClick} className="text-[#0097b2] font-semibold mt-2 hover:underline">
-              Upload your first image
-            </button>
+            {isStorageConfigured && (
+              <button onClick={handleUploadClick} className="text-[#0097b2] font-semibold mt-2 hover:underline">
+                Upload your first image
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
@@ -96,13 +98,15 @@ const Gallery: React.FC = () => {
                   >
                     <Copy className="w-5 h-5" />
                   </button>
-                  <button 
-                    onClick={() => removeFromGallery(url)}
-                    className="p-2 bg-white rounded-full text-red-500 hover:bg-red-50 transition-colors"
-                    title="Delete Image"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
+                  {isStorageConfigured && (
+                    <button 
+                      onClick={() => removeFromGallery(url)}
+                      className="p-2 bg-white rounded-full text-red-500 hover:bg-red-50 transition-colors"
+                      title="Delete Image"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
