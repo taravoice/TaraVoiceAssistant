@@ -155,11 +155,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error("No storage connection");
     }
 
-    console.log("Starting upload to bucket:", storage.app.options.storageBucket);
+    console.log("Starting upload. Bucket:", storage.app.options.storageBucket);
 
-    // Create a timeout promise that rejects after 30 seconds (increased from 15)
+    // Create a timeout promise that rejects after 30 seconds
     const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("Upload timed out. This usually means the Bucket Name in Vercel is incorrect/typo, or permissions are blocked.")), 30000);
+        setTimeout(() => reject(new Error("Upload timed out (30s). This usually means the Bucket Name in Vercel is incorrect, has a typo, or includes 'gs://'. Check Vercel Environment Variables.")), 30000);
     });
 
     try {
