@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Eye, Activity, Globe, Smartphone, Monitor, Command, ExternalLink, Loader2 } from 'lucide-react';
+import { Users, Eye, Activity, Globe, Smartphone, Monitor, Command, Loader2 } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [usingMockData, setUsingMockData] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   // SIMULATED DATA (Fallback)
   const mockStats = {
@@ -42,25 +43,35 @@ const Dashboard: React.FC = () => {
       try {
         const res = await fetch('/api/stats');
         
-        // Verify we got JSON back. If the API route is blocked/rewritten, we might get HTML.
+        // Check for HTML response (common 404/500 issue in SPAs)
         const contentType = res.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
-           throw new Error("Received non-JSON response (API route likely missing or rewritten)");
+           throw new Error("API returned HTML instead of JSON. Check vercel.json rewrites.");
         }
 
         const data = await res.json();
 
         if (res.ok && !data.error) {
-          console.log("Real Analytics Data:", data);
-          setStats(mockStats); // Still mock layout for now, but successful fetch confirmed
-          setUsingMockData(false);
+          console.log("Real Analytics Data Received:", data);
+          // Merge real data with mock structure to ensure UI has all fields if API is partial
+          // If data is just an empty object or array, we might still fallback to mock numbers for demo
+          if (Object.keys(data).length > 0) {
+             setStats({ ...mockStats, ...data });
+             setUsingMockData(false);
+          } else {
+             console.warn("API returned empty data object.");
+             setStats(mockStats);
+             setUsingMockData(true);
+          }
         } else {
-          console.warn("Using simulated data due to API status:", res.status);
+          console.warn("Using simulated data due to API error:", data.error || res.status);
+          setApiError(data.error || data.message || "Unknown API Error");
           setStats(mockStats);
           setUsingMockData(true);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Failed to fetch stats", error);
+        setApiError(error.message);
         setStats(mockStats);
         setUsingMockData(true);
       } finally {
@@ -86,13 +97,17 @@ const Dashboard: React.FC = () => {
         <p className="text-slate-500">Overview of your website traffic and performance.</p>
         
         {usingMockData && (
-          <div className="mt-4 p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800 flex items-start">
-             <Activity className="w-5 h-5 mr-2 shrink-0" />
-             <span>
-               <strong>Simulated Data Active:</strong> To see live data, add <code>VERCEL_API_TOKEN</code> and <code>VERCEL_PROJECT_ID</code> to your Vercel Environment Variables.
-               <br />
-               <a href="https://vercel.com/docs/rest-api" target="_blank" rel="noreferrer" className="underline mt-1 inline-block">Learn about Vercel API</a>
-             </span>
+          <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 flex flex-col items-start gap-2">
+             <div className="flex items-center">
+                <Activity className="w-5 h-5 mr-2 shrink-0" />
+                <strong>Simulated Data Active</strong>
+             </div>
+             <p>
+               {apiError ? `Error: ${apiError}` : "The dashboard is showing demo data."}
+             </p>
+             <p className="text-xs text-amber-700">
+               To fix: Add <code>VERCEL_API_TOKEN</code> and <code>VERCEL_PROJECT_ID</code> to Vercel Environment Variables and Redeploy.
+             </p>
           </div>
         )}
       </div>
@@ -107,18 +122,18 @@ const Dashboard: React.FC = () => {
            <div className="grid grid-cols-3 gap-4">
               <div className="text-center p-4 bg-slate-50 rounded-lg">
                  <div className="text-slate-500 text-sm mb-1 flex justify-center items-center"><Users className="w-4 h-4 mr-1"/> Visitors</div>
-                 <div className="text-2xl font-bold text-slate-900">{stats.visitors}</div>
-                 <div className="text-xs text-green-600 font-medium">{stats.visitorsTrend}</div>
+                 <div className="text-2xl font-bold text-slate-900">{stats?.visitors || "0"}</div>
+                 <div className="text-xs text-green-600 font-medium">{stats?.visitorsTrend || "0%"}</div>
               </div>
               <div className="text-center p-4 bg-slate-50 rounded-lg">
                  <div className="text-slate-500 text-sm mb-1 flex justify-center items-center"><Eye className="w-4 h-4 mr-1"/> Views</div>
-                 <div className="text-2xl font-bold text-slate-900">{stats.pageViews}</div>
-                 <div className="text-xs text-green-600 font-medium">{stats.viewsTrend}</div>
+                 <div className="text-2xl font-bold text-slate-900">{stats?.pageViews || "0"}</div>
+                 <div className="text-xs text-green-600 font-medium">{stats?.viewsTrend || "0%"}</div>
               </div>
               <div className="text-center p-4 bg-slate-50 rounded-lg">
                  <div className="text-slate-500 text-sm mb-1">Bounce Rate</div>
-                 <div className="text-2xl font-bold text-slate-900">{stats.bounceRate}</div>
-                 <div className="text-xs text-green-600 font-medium">{stats.bounceTrend}</div>
+                 <div className="text-2xl font-bold text-slate-900">{stats?.bounceRate || "0%"}</div>
+                 <div className="text-xs text-green-600 font-medium">{stats?.bounceTrend || "0%"}</div>
               </div>
            </div>
         </div>
