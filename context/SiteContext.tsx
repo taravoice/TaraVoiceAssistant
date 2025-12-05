@@ -148,16 +148,27 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   };
 
-  // Upload to Firebase Storage
+  // Upload to Firebase Storage with Timeout prevention
   const uploadToGallery = async (file: File): Promise<void> => {
     if (!storage) {
       alert("Firebase connection missing. Check your API keys.");
-      return;
+      throw new Error("No storage connection");
     }
+
+    // Create a timeout promise that rejects after 15 seconds
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Upload timed out. Check your internet or Firebase config.")), 15000);
+    });
 
     try {
       const storageRef = ref(storage, `gallery/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
+      
+      // Use Promise.race to prevent infinite spinner
+      const snapshot = await Promise.race([
+        uploadBytes(storageRef, file),
+        timeoutPromise
+      ]) as any;
+
       const downloadURL = await getDownloadURL(snapshot.ref);
 
       setContent(prev => ({
