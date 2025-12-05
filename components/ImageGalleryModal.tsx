@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { X, Check, Upload } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { X, Check, Upload, Loader2 } from 'lucide-react';
 import { Button } from './Button';
 import { useSite } from '../context/SiteContext';
 
@@ -12,6 +12,7 @@ interface ImageGalleryModalProps {
 export const ImageGalleryModal: React.FC<ImageGalleryModalProps> = ({ isOpen, onClose, onSelect }) => {
   const { content, uploadToGallery, isStorageConfigured } = useSite();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   if (!isOpen) return null;
 
@@ -22,10 +23,15 @@ export const ImageGalleryModal: React.FC<ImageGalleryModalProps> = ({ isOpen, on
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setIsUploading(true);
       try {
         await uploadToGallery(file);
-      } catch (e) {
-        alert("Upload failed. Check console for details.");
+        // Clear input after success so same file can be selected again if needed
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      } catch (e: any) {
+        alert("Upload failed: " + (e.message || "Unknown error"));
+      } finally {
+        setIsUploading(false);
       }
     }
   };
@@ -52,8 +58,19 @@ export const ImageGalleryModal: React.FC<ImageGalleryModalProps> = ({ isOpen, on
                   onChange={handleFileChange}
                />
                {isStorageConfigured && (
-                 <Button onClick={handleUploadClick} size="sm" variant="outline" className="flex items-center">
-                    <Upload className="w-4 h-4 mr-2" /> Upload New
+                 <Button 
+                    onClick={handleUploadClick} 
+                    size="sm" 
+                    variant="outline" 
+                    className="flex items-center"
+                    disabled={isUploading}
+                 >
+                    {isUploading ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                        <Upload className="w-4 h-4 mr-2" />
+                    )}
+                    {isUploading ? 'Uploading...' : 'Upload New'}
                  </Button>
                )}
              </div>
