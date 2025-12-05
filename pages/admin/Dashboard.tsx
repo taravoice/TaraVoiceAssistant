@@ -46,7 +46,7 @@ const Dashboard: React.FC = () => {
         // Check for HTML response (common 404/500 issue in SPAs)
         const contentType = res.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
-           throw new Error("API returned HTML instead of JSON. Check vercel.json rewrites.");
+           throw new Error("API returned HTML instead of JSON. Serverless function might not be running.");
         }
 
         const data = await res.json();
@@ -64,8 +64,8 @@ const Dashboard: React.FC = () => {
              setUsingMockData(true);
           }
         } else {
-          console.warn("Using simulated data due to API error:", data.error || res.status);
-          setApiError(data.error || data.message || "Unknown API Error");
+          console.warn("Using simulated data due to API error:", data);
+          setApiError(data.message || data.error || "Unknown API Error");
           setStats(mockStats);
           setUsingMockData(true);
         }
@@ -103,10 +103,10 @@ const Dashboard: React.FC = () => {
                 <strong>Simulated Data Active</strong>
              </div>
              <p>
-               {apiError ? `Error: ${apiError}` : "The dashboard is showing demo data."}
+               Error: <span className="font-mono bg-amber-100 px-1 rounded">{apiError}</span>
              </p>
              <p className="text-xs text-amber-700">
-               To fix: Add <code>VERCEL_API_TOKEN</code> and <code>VERCEL_PROJECT_ID</code> to Vercel Environment Variables and Redeploy.
+               If error is "forbidden" or "missing_scope", try adding <code>VERCEL_TEAM_ID</code> to Env Vars.
              </p>
           </div>
         )}
