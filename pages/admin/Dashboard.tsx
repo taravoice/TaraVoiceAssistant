@@ -46,26 +46,27 @@ const Dashboard: React.FC = () => {
         // Check for HTML response (common 404/500 issue in SPAs)
         const contentType = res.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
-           throw new Error("API returned HTML instead of JSON. Serverless function might not be running.");
+           // If we are local and see HTML, it usually means the proxy failed or isn't set up
+           if (window.location.hostname === 'localhost') {
+             throw new Error("Local Proxy Error: API returned HTML. Check vite.config.ts.");
+           }
+           throw new Error("API Endpoint Not Found (404). Function may not be deployed.");
         }
 
         const data = await res.json();
 
         if (res.ok && !data.error) {
           console.log("Real Analytics Data Received:", data);
-          // Merge real data with mock structure to ensure UI has all fields if API is partial
-          // If data is just an empty object or array, we might still fallback to mock numbers for demo
           if (Object.keys(data).length > 0) {
              setStats({ ...mockStats, ...data });
              setUsingMockData(false);
           } else {
-             console.warn("API returned empty data object.");
              setStats(mockStats);
              setUsingMockData(true);
           }
         } else {
-          console.warn("Using simulated data due to API error:", data);
-          setApiError(data.message || data.error || "Unknown API Error");
+          console.warn("API Error:", data);
+          setApiError(data.error || data.message || "Unknown API Error");
           setStats(mockStats);
           setUsingMockData(true);
         }
@@ -103,11 +104,13 @@ const Dashboard: React.FC = () => {
                 <strong>Simulated Data Active</strong>
              </div>
              <p>
-               Error: <span className="font-mono bg-amber-100 px-1 rounded">{apiError}</span>
+               Error: <span className="font-mono bg-amber-100 px-1 rounded font-bold">{apiError}</span>
              </p>
-             <p className="text-xs text-amber-700">
-               If error is "forbidden" or "missing_scope", try adding <code>VERCEL_TEAM_ID</code> to Env Vars.
-             </p>
+             <div className="text-xs text-amber-700 space-y-1">
+               <p>• If error is <code>forbidden</code>: Add <code>VERCEL_TEAM_ID</code> to Env Vars.</p>
+               <p>• If error is <code>configuration_error</code>: Check API Token & Project ID.</p>
+               <p>• If error is <code>Local Proxy Error</code>: Restart <code>npm run dev</code>.</p>
+             </div>
           </div>
         )}
       </div>
