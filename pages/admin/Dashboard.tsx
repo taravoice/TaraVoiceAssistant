@@ -1,8 +1,8 @@
 import React from 'react';
-import { Users, Eye, Activity, Globe, Smartphone, Monitor, Command } from 'lucide-react';
+import { Users, Eye, Activity, Globe, Smartphone, Monitor, Command, ExternalLink } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
-  // SIMULATED DATA - In a real full-stack app, this would come from the Vercel API via a proxy
+  // SIMULATED DATA - To mirror real data, you would need a Vercel Serverless Function to fetch from the Vercel API
   const stats = {
     visitors: "2.4k",
     pageViews: "5.1k",
@@ -23,7 +23,7 @@ const Dashboard: React.FC = () => {
   const devices = [
     { name: "Mobile", value: 55, icon: Smartphone, color: "bg-[#0097b2]" },
     { name: "Desktop", value: 40, icon: Monitor, color: "bg-purple-500" },
-    { name: "Tablet", value: 5, icon: Monitor, color: "bg-amber-500" }, // Using Monitor as fallback for Tablet
+    { name: "Tablet", value: 5, icon: Monitor, color: "bg-amber-500" },
   ];
 
   const os = [
@@ -42,8 +42,8 @@ const Dashboard: React.FC = () => {
         <div className="mt-4 p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800 flex items-start">
            <Activity className="w-5 h-5 mr-2 shrink-0" />
            <span>
-             <strong>Note:</strong> Data below is currently simulated for display purposes. 
-             To view real-time data, please consult your <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer" className="underline font-bold">Vercel Analytics Dashboard</a>.
+             <strong>Data Visualization:</strong> The data below mimics the Vercel Analytics structure. 
+             To view your live data, visit the <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer" className="underline font-bold inline-flex items-center">Vercel Dashboard <ExternalLink className="w-3 h-3 ml-1"/></a>.
            </span>
         </div>
       </div>
