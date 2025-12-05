@@ -54,7 +54,7 @@ const MediaManager: React.FC = () => {
              return (
                <div key={slot.key} className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-slate-50 transition-colors">
                  <div className="col-span-3 text-sm text-slate-500">
-                   {/* Mock date for now */}
+                   {/* Mock date since we don't track update time per slot yet */}
                    Oct 24, 2023
                  </div>
                  <div className="col-span-6">
