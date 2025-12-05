@@ -14,9 +14,10 @@ const getEnv = (key: string) => {
 const apiKey = getEnv('VITE_FIREBASE_API_KEY');
 let bucket = getEnv('VITE_FIREBASE_STORAGE_BUCKET');
 
-// CLEANER: Remove gs:// or protocols if user added them by mistake
+// CLEANER: Remove gs:// or protocols if user added them by mistake in Vercel
+// This is the #1 cause of "infinite buffering" / upload timeouts
 if (bucket) {
-  bucket = bucket.replace(/^gs:\/\//, '').replace(/^https?:\/\//, '');
+  bucket = bucket.replace(/^gs:\/\//, '').replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
 
 let storage: FirebaseStorage | null = null;
