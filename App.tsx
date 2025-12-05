@@ -12,6 +12,7 @@ import AdminLogin from './pages/admin/AdminLogin';
 import AdminLayout from './pages/admin/AdminLayout';
 import ContentManager from './pages/admin/ContentManager';
 import MediaManager from './pages/admin/MediaManager';
+import Gallery from './pages/admin/Gallery';
 import { SiteProvider } from './context/SiteContext';
 
 function ScrollToTop() {
@@ -36,6 +37,7 @@ function App() {
              <Route path="dashboard" element={<div className="text-slate-600">Welcome to your dashboard! Select an option from the sidebar.</div>} />
              <Route path="content" element={<ContentManager />} />
              <Route path="media" element={<MediaManager />} />
+             <Route path="gallery" element={<Gallery />} />
              <Route path="settings" element={<div className="text-slate-600">Settings placeholder.</div>} />
           </Route>
 
