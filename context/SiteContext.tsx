@@ -96,8 +96,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const listRef = ref(storage, 'gallery/');
         const res = await listAll(listRef);
         
+        // Explicitly type itemRef as any to avoid TS7006 error if types are missing
         const urls = await Promise.all(
-          res.items.map((itemRef) => getDownloadURL(itemRef))
+          res.items.map((itemRef: any) => getDownloadURL(itemRef))
         );
 
         setContent(prev => ({
