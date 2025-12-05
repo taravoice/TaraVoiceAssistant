@@ -15,7 +15,7 @@ import Dashboard from './pages/admin/Dashboard';
 import ContentManager from './pages/admin/ContentManager';
 import MediaManager from './pages/admin/MediaManager';
 import Gallery from './pages/admin/Gallery';
-import { SiteProvider } from './context/SiteContext';
+import { SiteProvider, useSite } from './context/SiteContext';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -27,11 +27,24 @@ function ScrollToTop() {
   return null;
 }
 
+// Analytics Tracker Component
+function PageTracker() {
+  const { pathname } = useLocation();
+  const { logVisit } = useSite();
+
+  useEffect(() => {
+    logVisit(pathname);
+  }, [pathname, logVisit]);
+
+  return null;
+}
+
 function App() {
   return (
     <SiteProvider>
       <Router>
         <ScrollToTop />
+        <PageTracker />
         <Routes>
           {/* Admin Routes (Standalone Layout) */}
           <Route path="/admin/login" element={<AdminLogin />} />
