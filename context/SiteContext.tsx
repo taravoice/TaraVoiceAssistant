@@ -163,11 +163,16 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log("Attempting upload to Bucket:", storage.app.options.storageBucket);
 
     // CRITICAL: Ensure we are authenticated (Anonymous) before upload
-    await ensureAuth();
+    // This solves the "Permission Denied" if rules require auth
+    try {
+        await ensureAuth();
+    } catch(e) {
+        console.warn("Auth check failed before upload:", e);
+    }
 
     // Create a timeout promise that rejects after 30 seconds
     const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error(`Upload timed out (30s). Tried connecting to: '${storage?.app.options.storageBucket}'. Ensure this EXACT bucket name exists in your Firebase Console and Vercel Environment Variables.`)), 30000);
+        setTimeout(() => reject(new Error(`Upload timed out (30s). This usually means the Bucket Name in Vercel is incorrect/typo, or permissions are blocked. Current Bucket Config: '${storage?.app.options.storageBucket}'`)), 30000);
     });
 
     try {
