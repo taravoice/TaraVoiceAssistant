@@ -91,7 +91,19 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // 1. INITIALIZE & LOAD CONFIG
   useEffect(() => {
     const initSite = async () => {
-      // Guard: If storage is null (keys missing), stop here to prevent crash
+      // Step A: Check LocalStorage for immediate config (Fastest)
+      const localConfig = localStorage.getItem('tara_site_config');
+      if (localConfig) {
+          try {
+              const parsed = JSON.parse(localConfig);
+              console.log("⚡ Loaded Config from LocalStorage");
+              setContent(prev => ({ ...prev, ...parsed }));
+          } catch (e) {
+              console.error("Local config parse error", e);
+          }
+      }
+
+      // Step B: Check Firebase
       if (!storage) {
         setIsStorageConfigured(false);
         return;
@@ -99,7 +111,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setIsStorageConfigured(true);
 
-      // A. Load Gallery Images
+      // Load Gallery Images
       try {
         const listRef = ref(storage, 'gallery/');
         const res = await listAll(listRef);
@@ -116,7 +128,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn("Gallery fetch warning:", error);
       }
 
-      // B. Load Site Configuration (Logo, Text, etc.)
+      // Load Cloud Config (Source of Truth)
       try {
         const configRef = ref(storage, 'config/site_config.json');
         // Add timestamp to prevent browser caching of the JSON file
@@ -125,15 +137,21 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         if (response.ok) {
             const savedConfig = await response.json();
-            console.log("✅ Loaded Saved Config:", savedConfig);
-            setContent(prev => ({
-                ...prev,
-                ...savedConfig,
-                // Ensure gallery is not overwritten by the config file (it comes from bucket list)
-                gallery: prev.gallery 
-            }));
+            console.log("☁️ Loaded Cloud Config:", savedConfig);
+            
+            // Update state and sync local storage
+            setContent(prev => {
+                const merged = {
+                    ...prev,
+                    ...savedConfig,
+                    gallery: prev.gallery // Keep gallery list
+                };
+                localStorage.setItem('tara_site_config', JSON.stringify(merged));
+                return merged;
+            });
         }
       } catch (error: any) {
+        // If config doesn't exist yet, that's fine, we use defaults
         if (error.code !== 'storage/object-not-found') {
             console.warn("Config fetch warning:", error);
         }
@@ -143,72 +161,75 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initSite();
   }, []);
 
-  // 2. SAVE CONFIGURATION TO FIREBASE
-  const saveSiteConfig = async (newContent: SiteContent) => {
-    if (!storage) return;
+  // 2. SAVE CONFIGURATION
+  // Helper to persist to LocalStorage (Instant) and Firebase (Async)
+  const persistContent = async (newContent: SiteContent) => {
+      // 1. Save to LocalStorage immediately
+      localStorage.setItem('tara_site_config', JSON.stringify(newContent));
 
-    try {
-       await ensureAuth();
-       const configRef = ref(storage, 'config/site_config.json');
-       
-       // Create a clean copy to save (exclude the dynamic gallery list)
-       const { gallery, ...configToSave } = newContent;
-       
-       await uploadString(configRef, JSON.stringify(configToSave), 'raw', {
-           contentType: 'application/json'
-       });
-       console.log("✅ Configuration Saved Successfully to Firebase");
-    } catch (error) {
-       console.error("❌ Failed to save configuration:", error);
-    }
+      // 2. Save to Firebase
+      if (!storage) return;
+
+      try {
+         await ensureAuth();
+         const configRef = ref(storage, 'config/site_config.json');
+         
+         // Exclude large gallery list from the config file
+         const { gallery, ...configToSave } = newContent;
+         
+         await uploadString(configRef, JSON.stringify(configToSave), 'raw', {
+             contentType: 'application/json'
+         });
+         console.log("✅ Configuration Saved to Firebase");
+      } catch (error) {
+         console.error("❌ Failed to save configuration to cloud:", error);
+      }
   };
 
   const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
-    setContent(prev => {
-      const next = {
-        ...prev,
-        home: { ...prev.home, [key]: value }
-      };
-      saveSiteConfig(next);
-      return next;
-    });
+    const newContent = {
+        ...content,
+        home: { ...content.home, [key]: value }
+    };
+    setContent(newContent);
+    await persistContent(newContent);
   };
 
   const addCustomSection = async (section: CustomSection) => {
-    setContent(prev => {
-      const next = {
-        ...prev,
-        customSections: [...prev.customSections, section]
-      };
-      saveSiteConfig(next);
-      return next;
-    });
+    const newContent = {
+        ...content,
+        customSections: [...content.customSections, section]
+    };
+    setContent(newContent);
+    await persistContent(newContent);
   };
 
   const removeCustomSection = async (id: string) => {
-    setContent(prev => {
-      const next = {
-        ...prev,
-        customSections: prev.customSections.filter(s => s.id !== id)
-      };
-      saveSiteConfig(next);
-      return next;
-    });
+    const newContent = {
+        ...content,
+        customSections: content.customSections.filter(s => s.id !== id)
+    };
+    setContent(newContent);
+    await persistContent(newContent);
   };
 
   const updateImage = async (key: string, url: string) => {
-    console.log(`Updating Image: ${key} -> ${url}`);
+    console.log(`Updating Image State: ${key} -> ${url}`);
     
-    // 1. Immediate Local Update (So UI reflects change instantly)
-    setContent(prev => {
-        const newContent = {
-            ...prev,
-            images: { ...prev.images, [key]: url }
-        };
-        // 2. Background Save
-        saveSiteConfig(newContent);
-        return newContent;
-    });
+    // Create new content object explicitly
+    const newContent = {
+        ...content,
+        images: { 
+            ...content.images, 
+            [key]: url 
+        }
+    };
+
+    // Update React State
+    setContent(newContent);
+    
+    // Trigger Persist
+    await persistContent(newContent);
   };
 
   // Upload to Firebase Storage with Timeout prevention
@@ -218,16 +239,14 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error("No storage connection");
     }
 
-    // CRITICAL: Ensure we are authenticated (Anonymous) before upload
     try {
         await ensureAuth();
     } catch(e) {
         console.warn("Auth check failed before upload:", e);
     }
 
-    // Create a timeout promise that rejects after 30 seconds
     const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error(`Upload timed out (30s). This usually means the Bucket Name in Vercel is incorrect/typo, or permissions are blocked. Current Bucket Config: '${storage?.app.options.storageBucket}'`)), 30000);
+        setTimeout(() => reject(new Error(`Upload timed out (30s). Check Bucket Name config.`)), 30000);
     });
 
     try {
@@ -254,7 +273,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      if (!storage) return;
 
      try {
-       await ensureAuth(); // Ensure auth before delete
+       await ensureAuth();
        if (url.includes('firebasestorage.googleapis.com')) {
          const storageRef = ref(storage, url);
          await deleteObject(storageRef);
@@ -296,9 +315,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logVisit = async (path: string) => {
     if (!storage || path.startsWith('/admin')) return;
 
-    // Ensure we have permission to write logs
     await ensureAuth();
-
     let sessionId = sessionStorage.getItem('tara_session_id');
     if (!sessionId) {
       sessionId = Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -335,7 +352,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       
     } catch (err) {
-      // Silent fail for analytics
+      // Silent fail
     }
   };
 
