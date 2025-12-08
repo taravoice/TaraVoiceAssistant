@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, Navigate, Outlet } from 'react-router-dom';
-import { LayoutDashboard, FileText, Image as ImageIcon, Settings, LogOut, ExternalLink, Grid, AlertTriangle } from 'lucide-react';
+import { LayoutDashboard, FileText, Image as ImageIcon, Settings as SettingsIcon, LogOut, ExternalLink, Grid, AlertTriangle } from 'lucide-react';
 import { useSite } from '../../context/SiteContext';
 
 const AdminLayout: React.FC = () => {
@@ -16,7 +16,7 @@ const AdminLayout: React.FC = () => {
     { label: 'Content Editor', path: '/admin/content', icon: FileText },
     { label: 'Media Manager', path: '/admin/media', icon: ImageIcon },
     { label: 'Gallery', path: '/admin/gallery', icon: Grid },
-    { label: 'Settings', path: '/admin/settings', icon: Settings },
+    { label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
   ];
 
   return (
