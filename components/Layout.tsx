@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, Phone, Mail, Facebook, Twitter, Linkedin, Instagram } from 'lucide-react';
+import { Menu, X, Phone, Mail, Facebook, Twitter, Linkedin, Instagram, Youtube } from 'lucide-react';
 import { Button } from './Button';
 import { useSite } from '../context/SiteContext';
 
@@ -114,10 +114,21 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 Revolutionizing customer engagement through innovative AI automation. Always on, always accurate.
               </p>
               <div className="flex space-x-4">
-                <a href="#" className="text-slate-400 hover:text-white transition-colors"><Facebook className="w-5 h-5" /></a>
-                <a href="#" className="text-slate-400 hover:text-white transition-colors"><Twitter className="w-5 h-5" /></a>
-                <a href="#" className="text-slate-400 hover:text-white transition-colors"><Linkedin className="w-5 h-5" /></a>
-                <a href="#" className="text-slate-400 hover:text-white transition-colors"><Instagram className="w-5 h-5" /></a>
+                <a href="https://www.facebook.com/taravoicea" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition-colors">
+                  <Facebook className="w-5 h-5" />
+                </a>
+                <a href="https://www.x.com/TaraAIAppnSettr" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition-colors">
+                  <Twitter className="w-5 h-5" />
+                </a>
+                <a href="https://www.linkedin.com/company/taravoiceassistant" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition-colors">
+                  <Linkedin className="w-5 h-5" />
+                </a>
+                <a href="https://www.instagram.com/taravoiceassistant" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition-colors">
+                  <Instagram className="w-5 h-5" />
+                </a>
+                <a href="https://www.youtube.com/@Taravoiceassistant" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition-colors">
+                  <Youtube className="w-5 h-5" />
+                </a>
               </div>
             </div>
 
