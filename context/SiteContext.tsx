@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { storage, ensureAuth } from '../firebase';
 import { ref, getDownloadURL, listAll, deleteObject, uploadString } from 'firebase/storage';
 
@@ -92,28 +92,25 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const configRef = ref(storage, 'config/site_config.json');
         const baseUrl = await getDownloadURL(configRef);
         
-        // Force Cache Busting on fetch with proper separator detection
         const separator = baseUrl.includes('?') ? '&' : '?';
         const freshUrl = `${baseUrl}${separator}t=${Date.now()}`;
         
         const response = await fetch(freshUrl);
         if (response.ok) {
           const cloudConfig = await response.json();
-          // Authority Logic: Cloud config spreads over local memory
           setContent(prev => ({
             ...prev,
             ...cloudConfig,
-            updatedAt: cloudConfig.updatedAt || Date.now()
+            gallery: prev.gallery // Retain current gallery state
           }));
-          console.log("☁️ SITE CONTEXT: GLOBAL SYNC SUCCESSFUL (Cloud data active).");
+          console.log("☁️ SITE CONTEXT: Cloud config hydrated globally.");
         }
       } catch (err) {
-        console.warn("☁️ SITE CONTEXT: Config file missing or permission denied. Using internal defaults.");
+        console.warn("☁️ SITE CONTEXT: Cloud config unreachable, using defaults.");
       } finally {
         setIsInitialized(true);
       }
 
-      // Sync Gallery
       try {
         const galleryListRef = ref(storage, 'gallery/');
         const res = await listAll(galleryListRef);
@@ -124,40 +121,49 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initSite();
   }, []);
 
-  const saveToCloud = async (newContent: SiteContent) => {
-    const now = Date.now();
-    const contentToApply = { ...newContent, updatedAt: now };
-    
-    // ATOMIC Update: update state locally first for instant UI response
-    setContent(contentToApply);
-    
+  const pushToCloud = useCallback(async (newContent: SiteContent) => {
     if (!storage) return;
     try {
       await ensureAuth();
       const configRef = ref(storage, 'config/site_config.json');
-      const { gallery, ...saveData } = contentToApply;
+      const { gallery, ...saveData } = newContent;
       await uploadString(configRef, JSON.stringify(saveData), 'raw', { contentType: 'application/json' });
-      console.log("☁️ SITE CONTEXT: New image mappings saved to cloud database.");
+      console.log("☁️ SITE CONTEXT: Broadcasting changes to cloud...");
     } catch (e) {
-      console.error("☁️ SITE CONTEXT: Network error saving configuration.", e);
+      console.error("☁️ SITE CONTEXT: Cloud sync failed.", e);
     }
-  };
+  }, []);
 
   const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
-    await saveToCloud({ ...content, home: { ...content.home, [key]: value } });
+    setContent(prev => {
+      const updated = { ...prev, home: { ...prev.home, [key]: value }, updatedAt: Date.now() };
+      pushToCloud(updated);
+      return updated;
+    });
   };
 
   const addCustomSection = async (section: CustomSection) => {
-    await saveToCloud({ ...content, customSections: [...content.customSections, section] });
+    setContent(prev => {
+      const updated = { ...prev, customSections: [...prev.customSections, section], updatedAt: Date.now() };
+      pushToCloud(updated);
+      return updated;
+    });
   };
 
   const removeCustomSection = async (id: string) => {
-    await saveToCloud({ ...content, customSections: content.customSections.filter(s => s.id !== id) });
+    setContent(prev => {
+      const updated = { ...prev, customSections: prev.customSections.filter(s => s.id !== id), updatedAt: Date.now() };
+      pushToCloud(updated);
+      return updated;
+    });
   };
 
   const updateImage = async (key: string, url: string) => {
-    const newImages = { ...content.images, [key]: url };
-    await saveToCloud({ ...content, images: newImages });
+    setContent(prev => {
+      const updated = { ...prev, images: { ...prev.images, [key]: url }, updatedAt: Date.now() };
+      pushToCloud(updated);
+      return updated;
+    });
   };
 
   const uploadToGallery = async (file: File) => {
@@ -222,6 +228,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useSite = () => {
   const context = useContext(SiteContext);
-  if (!context) throw new Error('Context not provider');
+  if (!context) throw new Error('Site Context is required.');
   return context;
 };
