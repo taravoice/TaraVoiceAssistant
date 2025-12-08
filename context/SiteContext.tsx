@@ -37,8 +37,9 @@ interface SiteContextType {
   logVisit: (path: string) => Promise<void>;
   isAuthenticated: boolean;
   isStorageConfigured: boolean;
-  login: () => void;
+  login: (password: string) => boolean;
   logout: () => void;
+  changePassword: (newPassword: string) => void;
 }
 
 const defaultImages: SiteImages = {
@@ -81,6 +82,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [content, setContent] = useState<SiteContent>(defaultContent);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isStorageConfigured, setIsStorageConfigured] = useState(false);
+  
+  // Admin Credentials State (Persisted in LocalStorage)
+  const [adminPassword, setAdminPassword] = useState(() => {
+    return localStorage.getItem('tara_admin_pw') || '987654321';
+  });
 
   // Fetch Firebase Images on Mount
   useEffect(() => {
@@ -97,7 +103,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const listRef = ref(storage, 'gallery/');
         const res = await listAll(listRef);
         
-        // Explicitly type itemRef as any to avoid TS7006 error if types are missing
         const urls = await Promise.all(
           res.items.map((itemRef: any) => getDownloadURL(itemRef))
         );
@@ -108,7 +113,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
       } catch (error) {
         console.error("Error fetching gallery:", error);
-        // If config is missing or error, we just fallback to default gallery
       }
     };
 
@@ -156,17 +160,16 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error("No storage connection");
     }
 
-    console.log("Starting upload. Bucket:", storage.app.options.storageBucket);
+    console.log("Attempting upload to Bucket:", storage.app.options.storageBucket);
 
     // Create a timeout promise that rejects after 30 seconds
     const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("Upload timed out (30s). This usually means the Bucket Name in Vercel is incorrect, has a typo, or includes 'gs://'. Check Vercel Environment Variables.")), 30000);
+        setTimeout(() => reject(new Error(`Upload timed out (30s). Tried connecting to: '${storage?.app.options.storageBucket}'. Ensure this EXACT bucket name exists in your Firebase Console and Vercel Environment Variables.`)), 30000);
     });
 
     try {
       const storageRef = ref(storage, `gallery/${Date.now()}_${file.name}`);
       
-      // Use Promise.race to prevent infinite spinner
       const snapshot = await Promise.race([
         uploadBytes(storageRef, file),
         timeoutPromise
@@ -184,14 +187,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Remove from Firebase Storage
   const removeFromGallery = async (url: string) => {
      if (!storage) return;
 
      try {
-       // Only try to delete if it's a firebase URL
        if (url.includes('firebasestorage.googleapis.com')) {
-         // Create a reference from the URL
          const storageRef = ref(storage, url);
          await deleteObject(storageRef);
        }
@@ -207,15 +207,31 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // ------------------------------------------------------------------
+  // AUTHENTICATION
+  // ------------------------------------------------------------------
+  const login = (passwordInput: string): boolean => {
+    if (passwordInput === adminPassword) {
+      setIsAuthenticated(true);
+      return true;
+    }
+    return false;
+  };
+
+  const logout = () => {
+    setIsAuthenticated(false);
+  };
+
+  const changePassword = (newPassword: string) => {
+    setAdminPassword(newPassword);
+    localStorage.setItem('tara_admin_pw', newPassword);
+  };
+
+  // ------------------------------------------------------------------
   // ANALYTICS LOGGING
   // ------------------------------------------------------------------
   const logVisit = async (path: string) => {
-    if (!storage) return;
-    
-    // Don't log admin pages
-    if (path.startsWith('/admin')) return;
+    if (!storage || path.startsWith('/admin')) return;
 
-    // Session Management (Simple)
     let sessionId = sessionStorage.getItem('tara_session_id');
     if (!sessionId) {
       sessionId = Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -223,8 +239,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      // 1. Get Country (Free API)
-      // Note: This might block on some adblockers, so we wrap in try/catch
       let country = 'Unknown';
       try {
         const geoRes = await fetch('https://api.country.is');
@@ -233,11 +247,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
            country = geoData.country;
         }
       } catch (e) {
-        // Fallback to timezone guess if fetch fails
         country = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/')[0];
       }
 
-      // 2. Prepare Log Data
       const logData = {
         path,
         timestamp: Date.now(),
@@ -248,23 +260,17 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         language: navigator.language
       };
 
-      // 3. Upload Log to Firebase 'analytics/logs/'
-      // We use a timestamp-random filename to avoid collisions
       const filename = `analytics/logs/${Date.now()}_${Math.random().toString(36).substr(2, 5)}.json`;
       const logRef = ref(storage, filename);
       
-      // Upload as string (lightweight)
       await uploadString(logRef, JSON.stringify(logData), 'raw', {
         contentType: 'application/json'
       });
       
     } catch (err) {
-      console.error("Analytics logging failed silently:", err);
+      // Silent fail for analytics
     }
   };
-
-  const login = () => setIsAuthenticated(true);
-  const logout = () => setIsAuthenticated(false);
 
   return (
     <SiteContext.Provider value={{ 
@@ -279,7 +285,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAuthenticated,
       isStorageConfigured,
       login,
-      logout
+      logout,
+      changePassword
     }}>
       {children}
     </SiteContext.Provider>
