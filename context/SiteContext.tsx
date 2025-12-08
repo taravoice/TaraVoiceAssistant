@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { storage } from '../firebase';
+import { storage, ensureAuth } from '../firebase';
 import { ref, uploadBytes, getDownloadURL, listAll, deleteObject, uploadString } from 'firebase/storage';
 
 export interface CustomSection {
@@ -162,6 +162,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     console.log("Attempting upload to Bucket:", storage.app.options.storageBucket);
 
+    // CRITICAL: Ensure we are authenticated (Anonymous) before upload
+    await ensureAuth();
+
     // Create a timeout promise that rejects after 30 seconds
     const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error(`Upload timed out (30s). Tried connecting to: '${storage?.app.options.storageBucket}'. Ensure this EXACT bucket name exists in your Firebase Console and Vercel Environment Variables.`)), 30000);
@@ -191,6 +194,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      if (!storage) return;
 
      try {
+       await ensureAuth(); // Ensure auth before delete
        if (url.includes('firebasestorage.googleapis.com')) {
          const storageRef = ref(storage, url);
          await deleteObject(storageRef);
@@ -231,6 +235,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ------------------------------------------------------------------
   const logVisit = async (path: string) => {
     if (!storage || path.startsWith('/admin')) return;
+
+    // Ensure we have permission to write logs
+    await ensureAuth();
 
     let sessionId = sessionStorage.getItem('tara_session_id');
     if (!sessionId) {
