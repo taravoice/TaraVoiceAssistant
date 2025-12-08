@@ -21,23 +21,22 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     return location.pathname === path ? 'text-[#0097b2] font-semibold' : 'text-slate-600 hover:text-[#0097b2]';
   };
 
+  // Binary Cache Buster
+  const logoUrl = `${content.images.logo}${content.images.logo.includes('?') ? '&' : '?'}t=${content.updatedAt}`;
+
   return (
     <div className="min-h-screen flex flex-col bg-[#d9d9d9] font-sans text-slate-900">
-      {/* Sticky Navigation */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
-            {/* Logo */}
             <Link to="/" className="flex items-center group">
               <img 
-                key={content.images.logo} /* Force re-render on change */
-                src={content.images.logo} 
+                src={logoUrl} 
                 alt="Tara Voice Assistant" 
-                className="h-12 w-auto object-contain transition-transform group-hover:scale-105" 
+                className="h-12 w-auto object-contain" 
               />
             </Link>
 
-            {/* Desktop Nav */}
             <nav className="hidden md:flex items-center space-x-8">
               {navLinks.map((link) => (
                 <Link
@@ -53,7 +52,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               </Link>
             </nav>
 
-            {/* Mobile Menu Button */}
             <div className="md:hidden">
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -65,7 +63,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </div>
         </div>
 
-        {/* Mobile Nav Drawer */}
         {isMenuOpen && (
           <div className="md:hidden bg-white border-b border-slate-100 animate-fade-in-down">
             <div className="px-4 pt-2 pb-6 space-y-2">
@@ -93,17 +90,14 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         )}
       </header>
 
-      {/* Main Content */}
       <main className="flex-grow pt-20">
         {children}
       </main>
 
-      {/* Footer */}
       <footer className="bg-black text-white pt-16 pb-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
             <div className="col-span-1 md:col-span-1">
-              {/* Logo Removed as requested */}
               <p className="text-slate-400 text-sm leading-relaxed mb-6">
                 Revolutionizing customer engagement through innovative AI automation. Always on, always accurate.
               </p>
@@ -160,7 +154,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                  <input 
                    type="email" 
                    placeholder="Enter your email" 
-                   className="bg-slate-800 border-none text-white px-4 py-2 rounded-l-md w-full focus:ring-1 focus:ring-[#0097b2] outline-none" 
+                   className="bg-slate-800 border-none text-white px-4 py-2 rounded-l-md w-full outline-none" 
                  />
                  <button className="bg-[#0097b2] px-4 py-2 rounded-r-md hover:bg-[#007f96] transition-colors">
                    Join
@@ -171,10 +165,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           
           <div className="border-t border-slate-800 pt-8 flex flex-col md:flex-row justify-between items-center text-sm text-slate-500">
             <p>&copy; {new Date().getFullYear()} Tara Voice Assistant. All rights reserved.</p>
-            <div className="flex space-x-6 mt-4 md:mt-0">
-              <a href="#" className="hover:text-white">Privacy Policy</a>
-              <a href="#" className="hover:text-white">Terms of Service</a>
-            </div>
           </div>
         </div>
       </footer>
