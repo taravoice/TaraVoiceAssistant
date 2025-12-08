@@ -27,11 +27,15 @@ const MediaManager: React.FC = () => {
     setIsGalleryOpen(true);
   };
 
+  // This function receives the URL from the Modal when "Use Selected Image" is clicked
   const handleSelectImage = async (url: string) => {
     if (selectedSlot) {
       setIsGalleryOpen(false); // Close first for better UX
       setIsSaving(true);
+      
+      console.log(`Replacing ${selectedSlot} with ${url}`); // Debug
       await updateImage(selectedSlot, url);
+      
       // Small delay to show the saving spinner
       setTimeout(() => {
         setIsSaving(false);
@@ -50,7 +54,7 @@ const MediaManager: React.FC = () => {
         {isSaving && (
            <div className="flex items-center text-[#0097b2] font-semibold bg-[#0097b2]/10 px-6 py-3 rounded-full shadow-sm animate-pulse">
               <Loader2 className="w-5 h-5 mr-3 animate-spin" />
-              Updating Website...
+              Saving Changes...
            </div>
         )}
       </div>
