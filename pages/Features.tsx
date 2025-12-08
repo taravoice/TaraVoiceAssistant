@@ -6,6 +6,12 @@ import { useSite } from '../context/SiteContext';
 
 const Features: React.FC = () => {
   const { content } = useSite();
+
+  const getBustedUrl = (url: string) => {
+    if (!url) return '';
+    return `${url}${url.includes('?') ? '&' : '?'}t=${content.updatedAt}`;
+  };
+
   const customSections = content.customSections.filter(s => s.page === 'Features');
 
   const featureList = [
@@ -77,7 +83,7 @@ const Features: React.FC = () => {
                 <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-slate-200 group">
                   <div className="absolute inset-0 bg-[#0097b2]/10 group-hover:bg-transparent transition-colors duration-500"></div>
                   <img 
-                    src={feature.img} 
+                    src={getBustedUrl(feature.img)} 
                     alt={feature.title} 
                     className="w-full h-auto transform group-hover:scale-105 transition-transform duration-700"
                   />
@@ -97,7 +103,7 @@ const Features: React.FC = () => {
                   </div>
                   {section.image && (
                     <div className="order-1 md:order-2">
-                      <img src={section.image} alt={section.title} className="rounded-2xl shadow-lg w-full h-auto object-cover" />
+                      <img src={getBustedUrl(section.image)} alt={section.title} className="rounded-2xl shadow-lg w-full h-auto object-cover" />
                     </div>
                   )}
               </div>
