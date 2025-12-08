@@ -92,7 +92,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const configRef = ref(storage, 'config/site_config.json');
         const baseUrl = await getDownloadURL(configRef);
         
-        // Authoritative Global Sync (Cache Busting)
+        // Authoritative Global Sync (Cache Busting on Fetch)
         const freshUrl = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
         const response = await fetch(freshUrl);
         
@@ -101,13 +101,13 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setContent(prev => ({
             ...prev,
             ...cloudConfig,
-            images: { ...prev.images, ...cloudConfig.images }, // Deep merge images
+            images: { ...prev.images, ...cloudConfig.images },
             updatedAt: cloudConfig.updatedAt || Date.now()
           }));
-          console.log("☁️ Global Logic: Authoritative Cloud Config Applied.");
+          console.log("☁️ SITE CONTEXT: Authoritative Cloud Config Applied.");
         }
       } catch (err) {
-        console.warn("☁️ Global Logic: Default settings in use.");
+        console.warn("☁️ SITE CONTEXT: Falling back to default settings.");
       } finally {
         setIsInitialized(true);
       }
@@ -124,15 +124,23 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const saveToCloud = async (newContent: SiteContent) => {
-    setContent(newContent);
+    // Binary Cache Buster: Generate timestamp once and use for both state and cloud save
+    const now = Date.now();
+    const contentToApply = { ...newContent, updatedAt: now };
+    
+    // Update local state IMMEDIATELY to trigger UI re-renders with the new ?t= parameter
+    setContent(contentToApply);
+    
     if (!storage) return;
     try {
       await ensureAuth();
       const configRef = ref(storage, 'config/site_config.json');
-      const { gallery, ...saveData } = newContent;
-      const json = JSON.stringify({ ...saveData, updatedAt: Date.now() });
-      await uploadString(configRef, json, 'raw', { contentType: 'application/json' });
-    } catch (e) {}
+      const { gallery, ...saveData } = contentToApply;
+      await uploadString(configRef, JSON.stringify(saveData), 'raw', { contentType: 'application/json' });
+      console.log("☁️ SITE CONTEXT: Config saved to cloud permanently.");
+    } catch (e) {
+      console.error("☁️ SITE CONTEXT: Failed to save config to cloud.", e);
+    }
   };
 
   const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
@@ -148,7 +156,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
-    // ATOMIC UPDATE: Create shallow clone, update key, save.
     const newImages = { ...content.images, [key]: url };
     await saveToCloud({ ...content, images: newImages });
   };
