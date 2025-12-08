@@ -119,11 +119,13 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // B. Load Site Configuration (Logo, Text, etc.)
       try {
         const configRef = ref(storage, 'config/site_config.json');
+        // Add timestamp to prevent browser caching of the JSON file
         const url = await getDownloadURL(configRef);
-        const response = await fetch(url);
+        const response = await fetch(`${url}?t=${Date.now()}`);
+        
         if (response.ok) {
             const savedConfig = await response.json();
-            console.log("Loaded Saved Config:", savedConfig);
+            console.log("✅ Loaded Saved Config:", savedConfig);
             setContent(prev => ({
                 ...prev,
                 ...savedConfig,
@@ -155,9 +157,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
        await uploadString(configRef, JSON.stringify(configToSave), 'raw', {
            contentType: 'application/json'
        });
-       console.log("Configuration Saved Successfully");
+       console.log("✅ Configuration Saved Successfully to Firebase");
     } catch (error) {
-       console.error("Failed to save configuration:", error);
+       console.error("❌ Failed to save configuration:", error);
     }
   };
 
@@ -195,15 +197,18 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
+    console.log(`Updating Image: ${key} -> ${url}`);
+    
     // 1. Immediate Local Update (So UI reflects change instantly)
-    const newContent = {
-        ...content,
-        images: { ...content.images, [key]: url }
-    };
-    setContent(newContent);
-
-    // 2. Background Save
-    await saveSiteConfig(newContent);
+    setContent(prev => {
+        const newContent = {
+            ...prev,
+            images: { ...prev.images, [key]: url }
+        };
+        // 2. Background Save
+        saveSiteConfig(newContent);
+        return newContent;
+    });
   };
 
   // Upload to Firebase Storage with Timeout prevention
