@@ -1,31 +1,39 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 
-// Helper to safely access env variables without crashing
+// Universal environment variable getter
 const getEnv = (key: string) => {
-  try {
-    // @ts-ignore - Supress TS error if import.meta.env is missing in specific envs
-    return import.meta.env?.[key];
-  } catch (e) {
-    return undefined;
+  // Check for Node.js (Serverless Function)
+  if (typeof process !== 'undefined' && process.env && process.env[key]) {
+    return process.env[key];
   }
+  // Check for Vite (Browser)
+  try {
+    // @ts-ignore
+    if (import.meta.env && import.meta.env[key]) {
+      // @ts-ignore
+      return import.meta.env[key];
+    }
+  } catch (e) {
+    // Ignore error
+  }
+  return undefined;
 };
 
-const apiKey = getEnv('VITE_FIREBASE_API_KEY');
-let bucket = getEnv('VITE_FIREBASE_STORAGE_BUCKET');
+// Use VITE_ prefix variables, but fallback to non-prefixed if needed (common in backend envs)
+const apiKey = getEnv('VITE_FIREBASE_API_KEY') || getEnv('FIREBASE_API_KEY');
+let bucket = getEnv('VITE_FIREBASE_STORAGE_BUCKET') || getEnv('FIREBASE_STORAGE_BUCKET');
 
-// CLEANER: Remove gs:// or protocols if user added them by mistake in Vercel
-// This is the #1 cause of "infinite buffering" / upload timeouts
+// CLEANER: Remove gs:// or protocols
 if (bucket) {
   bucket = bucket.replace(/^gs:\/\//, '').replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
 
 let storage: FirebaseStorage | null = null;
+let auth: any = null;
 
-console.log("--- FIREBASE INIT START ---");
 if (apiKey && bucket) {
-  console.log(`Attempting to connect to bucket: ${bucket}`);
-  
   const firebaseConfig = {
     apiKey: apiKey,
     authDomain: getEnv('VITE_FIREBASE_AUTH_DOMAIN'),
@@ -36,17 +44,27 @@ if (apiKey && bucket) {
   };
 
   try {
-    // Prevent double initialization in strict mode or hot reloads
     const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     storage = getStorage(app);
-    console.log("✅ FIREBASE STORAGE INITIALIZED SUCCESSFULLY");
+    auth = getAuth(app);
+    console.log("✅ FIREBASE INITIALIZED. Bucket:", bucket);
   } catch (error) {
     console.error("❌ Failed to initialize Firebase:", error);
   }
-} else {
-  console.warn("⚠️ Firebase keys missing. Check Vercel Environment Variables.");
-  console.log("API Key present:", !!apiKey);
-  console.log("Bucket present:", !!bucket);
 }
 
-export { storage };
+// Helper to ensure we have permission to write (for API routes)
+export const ensureAuth = async () => {
+  if (auth && !auth.currentUser) {
+    try {
+      console.log("Attempting Anonymous Auth...");
+      await signInAnonymously(auth);
+      console.log("Auth Success");
+    } catch (e) {
+      console.error("Auth failed", e);
+      throw e;
+    }
+  }
+};
+
+export { storage, auth };
