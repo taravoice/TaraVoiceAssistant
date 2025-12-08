@@ -1,17 +1,21 @@
+// ---------------------------------------------
+// FIXED PATH-BASED SITE CONTEXT
+// ---------------------------------------------
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { storage, ensureAuth } from '../firebase';
 import { ref, getDownloadURL, listAll, deleteObject, uploadString } from 'firebase/storage';
 
+// Types
 export interface CustomSection {
   id: string;
   title: string;
   content: string;
-  image?: string;
+  image?: string;  // NOW stores path, not URL
   page: string; 
 }
 
 interface SiteImages {
-  [key: string]: string;
+  [key: string]: string; // stores ONLY storage paths like: "images/homeHeroBg.png"
 }
 
 interface SiteContent {
@@ -22,8 +26,9 @@ interface SiteContent {
     aboutText: string;
   };
   customSections: CustomSection[];
-  images: SiteImages;
-  gallery: string[];
+  images: SiteImages;   // PATHS
+  gallery: string[];    // FULL URLs (OK)
+  resolvedImages: { [key: string]: string }; // NEW: Download URLs for rendering
   updatedAt: number;
 }
 
@@ -32,7 +37,7 @@ interface SiteContextType {
   updateHomeContent: (key: keyof SiteContent['home'], value: any) => Promise<void>;
   addCustomSection: (section: CustomSection) => Promise<void>;
   removeCustomSection: (id: string) => Promise<void>;
-  updateImage: (key: string, url: string) => Promise<void>;
+  updateImage: (key: string, storagePath: string) => Promise<void>; // accepts path now
   uploadToGallery: (file: File) => Promise<void>;
   removeFromGallery: (url: string) => Promise<void>;
   logVisit: (path: string) => Promise<void>;
@@ -44,17 +49,18 @@ interface SiteContextType {
   isInitialized: boolean;
 }
 
+// Default images (PATHS not URLs)
 const defaultImages: SiteImages = {
-  logo: 'https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?q=80&w=200&auto=format&fit=crop',
-  homeHeroBg: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop',
-  homeIndustry1: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?q=80&w=800&auto=format&fit=crop',
-  homeIndustry2: 'https://images.unsplash.com/photo-1600948836101-f9ffda59d250?q=80&w=800&auto=format&fit=crop',
-  feature1: 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?q=80&w=2068&auto=format&fit=crop',
-  feature2: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1740&auto=format&fit=crop',
-  feature3: 'https://images.unsplash.com/photo-1534536281715-e28d76689b4d?q=80&w=2069&auto=format&fit=crop',
-  feature4: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=1974&auto=format&fit=crop',
-  feature5: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1740&auto=format&fit=crop',
-  feature6: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?q=80&w=2070&auto=format&fit=crop',
+  logo: "default/logo.png",
+  homeHeroBg: "default/homeHeroBg.jpg",
+  homeIndustry1: "default/homeIndustry1.jpg",
+  homeIndustry2: "default/homeIndustry2.jpg",
+  feature1: "default/feature1.jpg",
+  feature2: "default/feature2.jpg",
+  feature3: "default/feature3.jpg",
+  feature4: "default/feature4.jpg",
+  feature5: "default/feature5.jpg",
+  feature6: "default/feature6.jpg",
 };
 
 const defaultContent: SiteContent = {
@@ -66,10 +72,14 @@ const defaultContent: SiteContent = {
   },
   customSections: [],
   images: defaultImages,
+  resolvedImages: {},     // real URLs loaded at runtime
   gallery: [],
   updatedAt: 0
 };
 
+// ---------------------------------------------
+// CONTEXT
+// ---------------------------------------------
 const SiteContext = createContext<SiteContextType | undefined>(undefined);
 
 export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -77,162 +87,172 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isStorageConfigured, setIsStorageConfigured] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
-  
   const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
+  // Resolve storage paths → real image URLs
+  const resolveAllImageURLs = useCallback(async (images: SiteImages) => {
+    if (!storage) return {};
+
+    const pairs = await Promise.all(
+      Object.entries(images).map(async ([key, path]) => {
+        try {
+          const url = await getDownloadURL(ref(storage, path));
+          return [key, url];
+        } catch {
+          return [key, ""]; // fallback
+        }
+      })
+    );
+
+    return Object.fromEntries(pairs);
+  }, []);
+
+  // ---------------------------------------------
+  // INITIAL LOAD
+  // ---------------------------------------------
   useEffect(() => {
     const initSite = async () => {
       if (!storage) {
         setIsInitialized(true);
         return;
       }
+
       setIsStorageConfigured(true);
 
-      // Load authoritative cloud config
+      // 1. Load cloud config (paths only)
       try {
-        const configRef = ref(storage, 'config/site_config.json');
+        const configRef = ref(storage, "config/site_config.json");
         const baseUrl = await getDownloadURL(configRef);
+        const freshUrl = `${baseUrl}?t=${Date.now()}`;
+        const res = await fetch(freshUrl);
 
-        // Strong cache busting for JSON
-        const separator = baseUrl.includes('?') ? '&' : '?';
-        const freshUrl = `${baseUrl}${separator}t=${Date.now()}`;
+        if (res.ok) {
+          const cloudConfig = await res.json();
 
-        const response = await fetch(freshUrl);
-        if (response.ok) {
-          const cloudConfig = await response.json();
-
-          // Prevent overwriting updated images
           setContent(prev => ({
             ...prev,
             ...cloudConfig,
-            images: {
-              ...prev.images,
-              ...(cloudConfig.images || {})
-            },
+            resolvedImages: prev.resolvedImages,
             gallery: prev.gallery
           }));
-
-          console.log("☁️ SITE CONTEXT: Authoritative cloud config loaded.");
         }
-      } catch (err) {
-        console.warn("☁️ SITE CONTEXT: Falling back to local defaults.");
-      } finally {
-        setIsInitialized(true);
+      } catch (e) {
+        console.warn("Using defaults, cloud config missing.");
       }
 
-      // Load gallery images
+      // 2. Load gallery URLs
       try {
-        const galleryListRef = ref(storage, 'gallery/');
-        const res = await listAll(galleryListRef);
-        const urls = await Promise.all(res.items.map(r => getDownloadURL(r)));
+        const galleryRef = ref(storage, "gallery/");
+        const res = await listAll(galleryRef);
+        const urls = await Promise.all(res.items.map(i => getDownloadURL(i)));
+
         setContent(prev => ({ ...prev, gallery: urls }));
-      } catch (e) {}
+      } catch {}
+
+      // 3. Resolve image paths into real URLs
+      const resolved = await resolveAllImageURLs(
+        content.images || defaultImages
+      );
+
+      setContent(prev => ({ ...prev, resolvedImages: resolved }));
+
+      setIsInitialized(true);
     };
 
     initSite();
   }, []);
 
-  // Save config with no-cache header
+  // ---------------------------------------------
+  // SAVE CONFIG (paths only)
+  // ---------------------------------------------
   const saveToCloud = useCallback(async (newContent: SiteContent) => {
     if (!storage) return;
+
     try {
       await ensureAuth();
 
-      const configRef = ref(storage, 'config/site_config.json');
-      const { gallery, ...saveData } = newContent;
+      const configRef = ref(storage, "config/site_config.json");
 
-      await uploadString(configRef, JSON.stringify(saveData), 'raw', {
-        contentType: 'application/json',
-        cacheControl: 'no-cache, no-store, must-revalidate'
+      const { gallery, resolvedImages, ...saveData } = newContent; // remove derived values
+
+      await uploadString(configRef, JSON.stringify(saveData), "raw", {
+        contentType: "application/json",
+        cacheControl: "no-cache, no-store, must-revalidate"
       });
 
-      console.log("☁️ SITE CONTEXT: Saved to cloud.");
     } catch (e) {
-      console.error("☁️ SITE CONTEXT: Cloud save failed.", e);
+      console.error("Cloud save failed", e);
     }
   }, []);
 
-  const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
+  // ---------------------------------------------
+  // IMAGE UPDATE (store PATH only)
+  // ---------------------------------------------
+  const updateImage = async (key: string, storagePath: string) => {
     setContent(prev => {
-      const updated = { 
-        ...prev, 
-        home: { ...prev.home, [key]: value }, 
-        updatedAt: Date.now() 
-      };
-      saveToCloud(updated);
-      return updated;
-    });
-  };
-
-  const addCustomSection = async (section: CustomSection) => {
-    setContent(prev => {
-      const updated = { 
-        ...prev, 
-        customSections: [...prev.customSections, section], 
-        updatedAt: Date.now() 
-      };
-      saveToCloud(updated);
-      return updated;
-    });
-  };
-
-  const removeCustomSection = async (id: string) => {
-    setContent(prev => {
-      const updated = { 
-        ...prev, 
-        customSections: prev.customSections.filter(s => s.id !== id), 
-        updatedAt: Date.now() 
-      };
-      saveToCloud(updated);
-      return updated;
-    });
-  };
-
-  // Updated: immediately apply cache-busted URL for instant refresh
-  const updateImage = async (key: string, url: string) => {
-    const freshUrl = `${url}?v=${Date.now()}`;
-
-    setContent(prev => {
-      const updated = { 
-        ...prev, 
-        images: { 
-          ...prev.images, 
-          [key]: freshUrl 
-        }, 
-        updatedAt: Date.now() 
+      const updated = {
+        ...prev,
+        images: {
+          ...prev.images,
+          [key]: storagePath
+        },
+        updatedAt: Date.now()
       };
 
       saveToCloud(updated);
       return updated;
     });
+
+    // Re-resolve this one image URL
+    const url = await getDownloadURL(ref(storage, storagePath));
+
+    setContent(prev => ({
+      ...prev,
+      resolvedImages: {
+        ...prev.resolvedImages,
+        [key]: url
+      }
+    }));
   };
 
+  // ---------------------------------------------
+  // GALLERY UPLOAD
+  // ---------------------------------------------
   const uploadToGallery = async (file: File) => {
     if (!storage) return;
-    try {
-      await ensureAuth();
-      const path = `gallery/${Date.now()}_${file.name}`;
-      const storageRef = ref(storage, path);
-      const { uploadBytes } = await import('firebase/storage');
-      const snap = await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(snap.ref);
 
-      setContent(prev => ({ ...prev, gallery: [url, ...prev.gallery] }));
-    } catch (e) { throw e; }
+    await ensureAuth();
+
+    const path = `gallery/${Date.now()}_${file.name}`;
+    const storageRef = ref(storage, path);
+    const { uploadBytes } = await import("firebase/storage");
+
+    const snap = await uploadBytes(storageRef, file);
+    const url = await getDownloadURL(snap.ref);
+
+    setContent(prev => ({ ...prev, gallery: [url, ...prev.gallery] }));
   };
 
+  // ---------------------------------------------
+  // REMOVE FROM GALLERY
+  // ---------------------------------------------
   const removeFromGallery = async (url: string) => {
-     if (!storage) return;
-     try {
-       await ensureAuth();
-       if (url.includes('firebasestorage.googleapis.com')) {
-         const r = ref(storage, url);
-         await deleteObject(r);
-       }
-       setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
-     } catch (e) {}
+    if (!storage) return;
+
+    await ensureAuth();
+
+    try {
+      const r = ref(storage, url);
+      await deleteObject(r);
+    } catch {}
+
+    setContent(prev => ({
+      ...prev,
+      gallery: prev.gallery.filter(i => i !== url)
+    }));
   };
 
+  // Auth, logging etc (unchanged)
   const login = (input: string) => {
     if (input === adminPassword) {
       setIsAuthenticated(true);
@@ -242,47 +262,65 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => setIsAuthenticated(false);
-
-  const changePassword = (pw: string) => {
-    localStorage.setItem('tara_admin_pw', pw);
-  };
+  const changePassword = (pw: string) => localStorage.setItem("tara_admin_pw", pw);
 
   const logVisit = async (path: string) => {
-    if (!storage || path.startsWith('/admin')) return;
+    if (!storage || path.startsWith("/admin")) return;
+
     try {
       await ensureAuth();
-      const sid = sessionStorage.getItem('t_sid') || Math.random().toString(36).substring(2);
-      sessionStorage.setItem('t_sid', sid);
+      const sid = sessionStorage.getItem("t_sid") || Math.random().toString(36).substring(2);
+      sessionStorage.setItem("t_sid", sid);
+
       const data = { path, timestamp: Date.now(), sid, ua: navigator.userAgent };
       const logRef = ref(storage, `analytics/logs/${Date.now()}.json`);
-      await uploadString(logRef, JSON.stringify(data), 'raw', { contentType: 'application/json' });
-    } catch (e) {}
+      await uploadString(logRef, JSON.stringify(data), "raw", { contentType: "application/json" });
+    } catch {}
   };
 
   return (
-    <SiteContext.Provider value={{ 
-      content, 
-      updateHomeContent, 
-      addCustomSection, 
-      removeCustomSection, 
-      updateImage, 
-      uploadToGallery, 
-      removeFromGallery, 
-      logVisit, 
-      isAuthenticated, 
-      isStorageConfigured, 
-      login, 
-      logout, 
-      changePassword,
-      isInitialized
-    }}>
+    <SiteContext.Provider
+      value={{
+        content,
+        updateHomeContent: async (key, value) =>
+          setContent(prev => {
+            const updated = { ...prev, home: { ...prev.home, [key]: value }, updatedAt: Date.now() };
+            saveToCloud(updated);
+            return updated;
+          }),
+        addCustomSection: async section =>
+          setContent(prev => {
+            const updated = { ...prev, customSections: [...prev.customSections, section], updatedAt: Date.now() };
+            saveToCloud(updated);
+            return updated;
+          }),
+        removeCustomSection: async id =>
+          setContent(prev => {
+            const updated = { ...prev, customSections: prev.customSections.filter(s => s.id !== id), updatedAt: Date.now() };
+            saveToCloud(updated);
+            return updated;
+          }),
+
+        updateImage,
+        uploadToGallery,
+        removeFromGallery,
+        logVisit,
+
+        isAuthenticated,
+        isStorageConfigured,
+        login,
+        logout,
+        changePassword,
+        isInitialized
+      }}
+    >
       {children}
     </SiteContext.Provider>
   );
 };
 
 export const useSite = () => {
-  const context = useContext(SiteContext);
-  if (!context) throw new Error('Site Context is required.');
-  return context;
+  const ctx = useContext(SiteContext);
+  if (!ctx) throw new Error("Site Context required");
+  return ctx;
 };
