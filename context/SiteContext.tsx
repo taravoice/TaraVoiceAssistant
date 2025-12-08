@@ -45,9 +45,8 @@ interface SiteContextType {
   isInitialized: boolean;
 }
 
-//AUTHORITATIVE FALLBACKS: High quality Unsplash images, NO local / logo dependencies.
 const defaultImages: SiteImages = {
-  logo: 'https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?q=80&w=200&auto=format&fit=crop', // A generic professional placeholder
+  logo: 'https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?q=80&w=200&auto=format&fit=crop',
   homeHeroBg: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop',
   homeIndustry1: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?q=80&w=800&auto=format&fit=crop',
   homeIndustry2: 'https://images.unsplash.com/photo-1600948836101-f9ffda59d250?q=80&w=800&auto=format&fit=crop',
@@ -59,9 +58,7 @@ const defaultImages: SiteImages = {
   feature6: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?q=80&w=2070&auto=format&fit=crop',
 };
 
-const systemGallery = [
-  ...Object.values(defaultImages).filter(url => url.startsWith('http'))
-];
+const systemGallery = [...Object.values(defaultImages)];
 
 const defaultContent: SiteContent = {
   home: {
@@ -90,7 +87,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const initSite = async () => {
-      // 1. Check Local Sync for UI speed
+      // 1. Initial local load for immediate perceived performance
       const local = localStorage.getItem('tara_site_config');
       if (local) {
         try { setContent(prev => ({ ...prev, ...JSON.parse(local) })); } catch (e) {}
@@ -103,31 +100,34 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       setIsStorageConfigured(true);
 
-      // 2. AUTHORITATIVE CLOUD HYDRATION: Mirroring the Firebase config to ALL browsers
+      // 2. AUTHORITATIVE CLOUD HYDRATION
       try {
         const configRef = ref(storage, 'config/site_config.json');
         const downloadUrl = await getDownloadURL(configRef);
         
-        // Anti-Cache String to force cloud fetch
+        // Anti-Cache String ensures global sync on every visitor's refresh
         const sep = downloadUrl.includes('?') ? '&' : '?';
         const freshUrl = `${downloadUrl}${sep}t=${Date.now()}`;
         
         const response = await fetch(freshUrl);
         if (response.ok) {
           const cloudConfig = await response.json();
-          console.log("☁️ SiteContext: Cloud sync starting...");
           
           setContent(prev => {
-            const merged = { ...prev, ...cloudConfig, updatedAt: cloudConfig.updatedAt || Date.now() };
+            // MERGE: Cloud settings overwrite local defaults completely
+            const merged = { 
+              ...prev, 
+              ...cloudConfig, 
+              images: { ...prev.images, ...cloudConfig.images }, // Force nested image merge
+              updatedAt: cloudConfig.updatedAt || Date.now() 
+            };
             localStorage.setItem('tara_site_config', JSON.stringify(merged));
             return merged;
           });
-          console.log("☁️ SiteContext: Global Auth Config loaded for current browser.");
+          console.log("☁️ SiteContext: Authoritative Global Config Loaded.");
         }
       } catch (err: any) {
-        if (err.code !== 'storage/object-not-found') {
-          console.warn("☁️ SiteContext: Storage rules might be blocking config read.", err.message);
-        }
+        console.warn("☁️ SiteContext: Cloud Config check done (might not exist yet).");
       } finally {
         setIsInitialized(true);
       }
@@ -145,8 +145,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveToCloud = async (newContent: SiteContent) => {
     const payload = { ...newContent, updatedAt: Date.now() };
-    
-    // UI Local Persistence
     setContent(payload);
     localStorage.setItem('tara_site_config', JSON.stringify(payload));
     
@@ -154,9 +152,10 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await ensureAuth();
       const configRef = ref(storage, 'config/site_config.json');
+      // Strip gallery from cloud config to save space
       const { gallery, ...saveData } = payload;
       await uploadString(configRef, JSON.stringify(saveData), 'raw', { contentType: 'application/json' });
-      console.log("🚀 SiteContext: Cloud broadcast successful.");
+      console.log("🚀 SiteContext: Broadcaster updated cloud registry.");
     } catch (e) {
       console.error("🚀 SiteContext: Broadcast failed.", e);
     }
@@ -175,7 +174,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
-    console.log(`SiteContext: Remapping image '${key}' -> ${url}`);
     await saveToCloud({ ...content, images: { ...content.images, [key]: url } });
   };
 
