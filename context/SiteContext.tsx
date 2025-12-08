@@ -7,7 +7,7 @@ export interface CustomSection {
   title: string;
   content: string;
   image?: string;
-  page: string; // 'Home' | 'About' | 'Features' | 'Pricing' | 'Contact'
+  page: string; 
 }
 
 interface SiteImages {
@@ -23,7 +23,7 @@ interface SiteContent {
   };
   customSections: CustomSection[];
   images: SiteImages;
-  gallery: string[]; // List of available image URLs
+  gallery: string[]; 
 }
 
 interface SiteContextType {
@@ -44,12 +44,9 @@ interface SiteContextType {
 
 const defaultImages: SiteImages = {
   logo: '/logo.png',
-  // Home Page
   homeHeroBg: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop',
   homeIndustry1: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?q=80&w=800&auto=format&fit=crop',
   homeIndustry2: 'https://images.unsplash.com/photo-1600948836101-f9ffda59d250?q=80&w=800&auto=format&fit=crop',
-  
-  // Features Page
   feature1: 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?q=80&w=2068&auto=format&fit=crop',
   feature2: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1740&auto=format&fit=crop',
   feature3: 'https://images.unsplash.com/photo-1534536281715-e28d76689b4d?q=80&w=2069&auto=format&fit=crop',
@@ -58,7 +55,6 @@ const defaultImages: SiteImages = {
   feature6: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?q=80&w=2070&auto=format&fit=crop',
 };
 
-// Default system images to always show in gallery
 const systemGallery = [
   '/logo.png',
   ...Object.values(defaultImages).filter(url => url.startsWith('http'))
@@ -83,27 +79,23 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isStorageConfigured, setIsStorageConfigured] = useState(false);
   
-  // Admin Credentials State (Persisted in LocalStorage)
   const [adminPassword, setAdminPassword] = useState(() => {
     return localStorage.getItem('tara_admin_pw') || '987654321';
   });
 
-  // 1. INITIALIZE & LOAD CONFIG
   useEffect(() => {
     const initSite = async () => {
-      // Step A: Check LocalStorage for immediate config (Fastest)
+      // 1. Load Local Storage for immediate UI paint
       const localConfig = localStorage.getItem('tara_site_config');
       if (localConfig) {
           try {
               const parsed = JSON.parse(localConfig);
-              console.log("⚡ Loaded Config from LocalStorage");
-              setContent(prev => ({ ...prev, ...parsed }));
+              setContent(prev => ({ ...prev, ...parsed, gallery: prev.gallery }));
           } catch (e) {
               console.error("Local config parse error", e);
           }
       }
 
-      // Step B: Check Firebase
       if (!storage) {
         setIsStorageConfigured(false);
         return;
@@ -111,158 +103,98 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setIsStorageConfigured(true);
 
-      // Load Gallery Images
-      try {
-        const listRef = ref(storage, 'gallery/');
-        const res = await listAll(listRef);
-        
-        const urls = await Promise.all(
-          res.items.map((itemRef: any) => getDownloadURL(itemRef))
-        );
-
-        setContent(prev => ({
-          ...prev,
-          gallery: [...systemGallery, ...urls]
-        }));
-      } catch (error) {
-        console.warn("Gallery fetch warning:", error);
-      }
-
-      // Load Cloud Config (Source of Truth)
+      // 2. Fetch Global Source of Truth from cloud
       try {
         const configRef = ref(storage, 'config/site_config.json');
-        // Add timestamp to prevent browser caching of the JSON file
         const url = await getDownloadURL(configRef);
+        // FORCE CACHE BUSTING for other browsers
         const response = await fetch(`${url}?t=${Date.now()}`);
-        
         if (response.ok) {
             const savedConfig = await response.json();
-            console.log("☁️ Loaded Cloud Config:", savedConfig);
-            
-            // Update state and sync local storage
             setContent(prev => {
-                const merged = {
-                    ...prev,
-                    ...savedConfig,
-                    gallery: prev.gallery // Keep gallery list
-                };
+                const merged = { ...prev, ...savedConfig, gallery: prev.gallery };
                 localStorage.setItem('tara_site_config', JSON.stringify(merged));
                 return merged;
             });
+            console.log("☁️ Global Configuration Hydrated for all browsers");
         }
       } catch (error: any) {
-        // If config doesn't exist yet, that's fine, we use defaults
         if (error.code !== 'storage/object-not-found') {
-            console.warn("Config fetch warning:", error);
+            console.warn("Global config fetch warning:", error);
         }
       }
-    };
 
+      // 3. Fetch Gallery items
+      try {
+        const listRef = ref(storage, 'gallery/');
+        const res = await listAll(listRef);
+        const urls = await Promise.all(
+          res.items.map((itemRef: any) => getDownloadURL(itemRef))
+        );
+        setContent(prev => ({ ...prev, gallery: [...systemGallery, ...urls] }));
+      } catch (error) {
+        console.warn("Gallery fetch warning:", error);
+      }
+    };
     initSite();
   }, []);
 
-  // 2. SAVE CONFIGURATION
-  // Helper to persist to LocalStorage (Instant) and Firebase (Async)
   const persistContent = async (newContent: SiteContent) => {
-      // 1. Save to LocalStorage immediately
+      // Sync local browser instantly
       localStorage.setItem('tara_site_config', JSON.stringify(newContent));
-
-      // 2. Save to Firebase
+      
       if (!storage) return;
-
       try {
          await ensureAuth();
          const configRef = ref(storage, 'config/site_config.json');
-         
-         // Exclude large gallery list from the config file
          const { gallery, ...configToSave } = newContent;
-         
          await uploadString(configRef, JSON.stringify(configToSave), 'raw', {
              contentType: 'application/json'
          });
-         console.log("✅ Configuration Saved to Firebase");
+         console.log("🚀 Configuration Synced to Firebase for all browsers");
       } catch (error) {
-         console.error("❌ Failed to save configuration to cloud:", error);
+         console.error("Failed to save config to cloud:", error);
       }
   };
 
   const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
-    const newContent = {
-        ...content,
-        home: { ...content.home, [key]: value }
-    };
+    const newContent = { ...content, home: { ...content.home, [key]: value } };
     setContent(newContent);
     await persistContent(newContent);
   };
 
   const addCustomSection = async (section: CustomSection) => {
-    const newContent = {
-        ...content,
-        customSections: [...content.customSections, section]
-    };
+    const newContent = { ...content, customSections: [...content.customSections, section] };
     setContent(newContent);
     await persistContent(newContent);
   };
 
   const removeCustomSection = async (id: string) => {
-    const newContent = {
-        ...content,
-        customSections: content.customSections.filter(s => s.id !== id)
-    };
+    const newContent = { ...content, customSections: content.customSections.filter(s => s.id !== id) };
     setContent(newContent);
     await persistContent(newContent);
   };
 
   const updateImage = async (key: string, url: string) => {
-    console.log(`Updating Image State: ${key} -> ${url}`);
-    
-    // Create new content object explicitly
-    const newContent = {
-        ...content,
-        images: { 
-            ...content.images, 
-            [key]: url 
-        }
-    };
-
-    // Update React State
+    const newContent = { ...content, images: { ...content.images, [key]: url } };
     setContent(newContent);
-    
-    // Trigger Persist
     await persistContent(newContent);
   };
 
-  // Upload to Firebase Storage with Timeout prevention
   const uploadToGallery = async (file: File): Promise<void> => {
     if (!storage) {
-      alert("Firebase connection missing. Check your API keys.");
-      throw new Error("No storage connection");
+      alert("Storage not configured.");
+      throw new Error("No storage");
     }
-
-    try {
-        await ensureAuth();
-    } catch(e) {
-        console.warn("Auth check failed before upload:", e);
-    }
-
     const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error(`Upload timed out (30s). Check Bucket Name config.`)), 30000);
+        setTimeout(() => reject(new Error(`Upload timed out (30s). Check Bucket Name in Env Vars.`)), 30000);
     });
-
     try {
+      await ensureAuth();
       const storageRef = ref(storage, `gallery/${Date.now()}_${file.name}`);
-      
-      const snapshot = await Promise.race([
-        uploadBytes(storageRef, file),
-        timeoutPromise
-      ]) as any;
-
+      const snapshot = await Promise.race([uploadBytes(storageRef, file), timeoutPromise]) as any;
       const downloadURL = await getDownloadURL(snapshot.ref);
-
-      setContent(prev => ({
-        ...prev,
-        gallery: [downloadURL, ...prev.gallery]
-      }));
+      setContent(prev => ({ ...prev, gallery: [downloadURL, ...prev.gallery] }));
     } catch (error) {
       console.error("Upload failed", error);
       throw error;
@@ -271,27 +203,18 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const removeFromGallery = async (url: string) => {
      if (!storage) return;
-
      try {
        await ensureAuth();
        if (url.includes('firebasestorage.googleapis.com')) {
          const storageRef = ref(storage, url);
          await deleteObject(storageRef);
        }
-
-       setContent(prev => ({
-          ...prev,
-          gallery: prev.gallery.filter(item => item !== url)
-       }));
+       setContent(prev => ({ ...prev, gallery: prev.gallery.filter(item => item !== url) }));
      } catch (error) {
        console.error("Delete failed", error);
-       alert("Failed to delete image. Check console.");
      }
   };
 
-  // ------------------------------------------------------------------
-  // AUTHENTICATION
-  // ------------------------------------------------------------------
   const login = (passwordInput: string): boolean => {
     if (passwordInput === adminPassword) {
       setIsAuthenticated(true);
@@ -300,77 +223,29 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return false;
   };
 
-  const logout = () => {
-    setIsAuthenticated(false);
-  };
+  const logout = () => setIsAuthenticated(false);
 
   const changePassword = (newPassword: string) => {
     setAdminPassword(newPassword);
     localStorage.setItem('tara_admin_pw', newPassword);
   };
 
-  // ------------------------------------------------------------------
-  // ANALYTICS LOGGING
-  // ------------------------------------------------------------------
   const logVisit = async (path: string) => {
     if (!storage || path.startsWith('/admin')) return;
-
-    await ensureAuth();
-    let sessionId = sessionStorage.getItem('tara_session_id');
-    if (!sessionId) {
-      sessionId = Math.random().toString(36).substring(2) + Date.now().toString(36);
-      sessionStorage.setItem('tara_session_id', sessionId);
-    }
-
     try {
-      let country = 'Unknown';
-      try {
-        const geoRes = await fetch('https://api.country.is');
-        if (geoRes.ok) {
-           const geoData = await geoRes.json();
-           country = geoData.country;
-        }
-      } catch (e) {
-        country = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/')[0];
-      }
-
-      const logData = {
-        path,
-        timestamp: Date.now(),
-        sessionId,
-        country,
-        userAgent: navigator.userAgent,
-        screen: `${window.screen.width}x${window.screen.height}`,
-        language: navigator.language
-      };
-
+      await ensureAuth();
+      let sessionId = sessionStorage.getItem('tara_session_id') || Math.random().toString(36).substring(2);
+      sessionStorage.setItem('tara_session_id', sessionId);
+      const logData = { path, timestamp: Date.now(), sessionId, userAgent: navigator.userAgent };
       const filename = `analytics/logs/${Date.now()}_${Math.random().toString(36).substr(2, 5)}.json`;
       const logRef = ref(storage, filename);
-      
-      await uploadString(logRef, JSON.stringify(logData), 'raw', {
-        contentType: 'application/json'
-      });
-      
-    } catch (err) {
-      // Silent fail
-    }
+      await uploadString(logRef, JSON.stringify(logData), 'raw', { contentType: 'application/json' });
+    } catch (err) {}
   };
 
   return (
     <SiteContext.Provider value={{ 
-      content, 
-      updateHomeContent, 
-      addCustomSection, 
-      removeCustomSection,
-      updateImage,
-      uploadToGallery,
-      removeFromGallery,
-      logVisit,
-      isAuthenticated,
-      isStorageConfigured,
-      login,
-      logout,
-      changePassword
+      content, updateHomeContent, addCustomSection, removeCustomSection, updateImage, uploadToGallery, removeFromGallery, logVisit, isAuthenticated, isStorageConfigured, login, logout, changePassword
     }}>
       {children}
     </SiteContext.Provider>
@@ -379,8 +254,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useSite = () => {
   const context = useContext(SiteContext);
-  if (!context) {
-    throw new Error('useSite must be used within a SiteProvider');
-  }
+  if (!context) throw new Error('useSite must be used within a SiteProvider');
   return context;
 };
