@@ -1,4 +1,3 @@
-
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 import { getAuth, signInAnonymously } from 'firebase/auth';
@@ -15,9 +14,9 @@ const getEnv = (key: string) => {
 const apiKey = getEnv('VITE_FIREBASE_API_KEY') || getEnv('FIREBASE_API_KEY');
 let bucket = getEnv('VITE_FIREBASE_STORAGE_BUCKET') || getEnv('FIREBASE_STORAGE_BUCKET');
 
-// CLEANER: Strict parsing of bucket syntax
+// CLEANER: Robust bucket syntax cleaning
 if (bucket) {
-  bucket = bucket.replace(/^gs:\/\//, '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+  bucket = bucket.replace(/^gs:\/\//, '').replace(/^https?:\/\//, '').replace(/\/$/, '').trim();
 }
 
 let storage: FirebaseStorage | null = null;
@@ -37,7 +36,7 @@ if (apiKey && bucket) {
     const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     storage = getStorage(app);
     auth = getAuth(app);
-    console.log("🔥 Firebase: Ready for Cloud Sync. Bucket ID:", bucket);
+    console.log("🔥 Firebase: Connected to Bucket:", bucket);
   } catch (err) {
     console.error("🔥 Firebase: Initialization failed.", err);
   }
