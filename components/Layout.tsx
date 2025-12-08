@@ -30,6 +30,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             {/* Logo */}
             <Link to="/" className="flex items-center group">
               <img 
+                key={content.images.logo} /* Force re-render on change */
                 src={content.images.logo} 
                 alt="Tara Voice Assistant" 
                 className="h-12 w-auto object-contain transition-transform group-hover:scale-105" 
@@ -105,6 +106,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <div className="mb-6">
                 {/* Using brightness-0 invert to make the logo white for dark footer */}
                 <img 
+                  key={`footer-${content.images.logo}`}
                   src={content.images.logo} 
                   alt="Tara Voice Assistant" 
                   className="h-10 w-auto object-contain brightness-0 invert opacity-90" 
