@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { storage, ensureAuth } from '../firebase';
 import { ref, getDownloadURL, listAll, deleteObject, uploadString } from 'firebase/storage';
@@ -88,10 +89,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       setIsStorageConfigured(true);
 
+      // Autoritative Cloud Load
       try {
         const configRef = ref(storage, 'config/site_config.json');
         const baseUrl = await getDownloadURL(configRef);
         
+        // Accurate Cache Busting logic
         const separator = baseUrl.includes('?') ? '&' : '?';
         const freshUrl = `${baseUrl}${separator}t=${Date.now()}`;
         
@@ -101,16 +104,17 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setContent(prev => ({
             ...prev,
             ...cloudConfig,
-            gallery: prev.gallery // Retain current gallery state
+            gallery: prev.gallery // Retain current gallery list
           }));
-          console.log("☁️ SITE CONTEXT: Cloud config hydrated globally.");
+          console.log("☁️ SITE CONTEXT: Authoritative cloud config loaded.");
         }
       } catch (err) {
-        console.warn("☁️ SITE CONTEXT: Cloud config unreachable, using defaults.");
+        console.warn("☁️ SITE CONTEXT: Falling back to local defaults.");
       } finally {
         setIsInitialized(true);
       }
 
+      // Load Gallery
       try {
         const galleryListRef = ref(storage, 'gallery/');
         const res = await listAll(galleryListRef);
@@ -121,23 +125,23 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initSite();
   }, []);
 
-  const pushToCloud = useCallback(async (newContent: SiteContent) => {
+  const saveToCloud = useCallback(async (newContent: SiteContent) => {
     if (!storage) return;
     try {
       await ensureAuth();
       const configRef = ref(storage, 'config/site_config.json');
       const { gallery, ...saveData } = newContent;
       await uploadString(configRef, JSON.stringify(saveData), 'raw', { contentType: 'application/json' });
-      console.log("☁️ SITE CONTEXT: Broadcasting changes to cloud...");
+      console.log("☁️ SITE CONTEXT: Saved to cloud.");
     } catch (e) {
-      console.error("☁️ SITE CONTEXT: Cloud sync failed.", e);
+      console.error("☁️ SITE CONTEXT: Cloud save failed.", e);
     }
   }, []);
 
   const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
     setContent(prev => {
       const updated = { ...prev, home: { ...prev.home, [key]: value }, updatedAt: Date.now() };
-      pushToCloud(updated);
+      saveToCloud(updated);
       return updated;
     });
   };
@@ -145,7 +149,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addCustomSection = async (section: CustomSection) => {
     setContent(prev => {
       const updated = { ...prev, customSections: [...prev.customSections, section], updatedAt: Date.now() };
-      pushToCloud(updated);
+      saveToCloud(updated);
       return updated;
     });
   };
@@ -153,15 +157,17 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const removeCustomSection = async (id: string) => {
     setContent(prev => {
       const updated = { ...prev, customSections: prev.customSections.filter(s => s.id !== id), updatedAt: Date.now() };
-      pushToCloud(updated);
+      saveToCloud(updated);
       return updated;
     });
   };
 
   const updateImage = async (key: string, url: string) => {
+    // 1. Update state INSTANTLY for immediate binary refresh
     setContent(prev => {
       const updated = { ...prev, images: { ...prev.images, [key]: url }, updatedAt: Date.now() };
-      pushToCloud(updated);
+      // 2. Persist in background
+      saveToCloud(updated);
       return updated;
     });
   };
