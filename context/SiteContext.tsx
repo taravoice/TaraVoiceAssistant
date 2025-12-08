@@ -195,14 +195,15 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
-    setContent(prev => {
-      const next = {
-        ...prev,
-        images: { ...prev.images, [key]: url }
-      };
-      saveSiteConfig(next);
-      return next;
-    });
+    // 1. Immediate Local Update (So UI reflects change instantly)
+    const newContent = {
+        ...content,
+        images: { ...content.images, [key]: url }
+    };
+    setContent(newContent);
+
+    // 2. Background Save
+    await saveSiteConfig(newContent);
   };
 
   // Upload to Firebase Storage with Timeout prevention
