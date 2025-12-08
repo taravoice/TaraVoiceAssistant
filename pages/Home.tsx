@@ -7,6 +7,11 @@ import { useSite } from '../context/SiteContext';
 const Home: React.FC = () => {
   const { content } = useSite();
 
+  const getBustedUrl = (url: string) => {
+    if (!url) return '';
+    return `${url}${url.includes('?') ? '&' : '?'}t=${content.updatedAt}`;
+  };
+
   const customSections = content.customSections.filter(s => s.page === 'Home');
 
   return (
@@ -14,9 +19,9 @@ const Home: React.FC = () => {
       {/* Hero Section */}
       <section className="relative bg-[#d9d9d9] overflow-hidden">
         <div 
-          key={content.images.homeHeroBg} /* Force re-render if bg changes */
+          key={getBustedUrl(content.images.homeHeroBg)} /* Force re-render if bg changes */
           className="absolute inset-0 bg-cover bg-center opacity-5 transition-all duration-500"
-          style={{ backgroundImage: `url('${content.images.homeHeroBg}')` }}
+          style={{ backgroundImage: `url('${getBustedUrl(content.images.homeHeroBg)}')` }}
         ></div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-32 relative z-10">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
@@ -85,7 +90,7 @@ const Home: React.FC = () => {
                  </div>
                  {section.image && (
                    <div className="order-1 md:order-2">
-                      <img src={section.image} alt={section.title} className="rounded-2xl shadow-lg w-full h-auto object-cover" />
+                      <img src={getBustedUrl(section.image)} alt={section.title} className="rounded-2xl shadow-lg w-full h-auto object-cover" />
                    </div>
                  )}
               </div>
@@ -144,14 +149,14 @@ const Home: React.FC = () => {
              </div>
              <div className="grid grid-cols-2 gap-4">
                 <img 
-                  key={content.images.homeIndustry1}
-                  src={content.images.homeIndustry1} 
+                  key={getBustedUrl(content.images.homeIndustry1)}
+                  src={getBustedUrl(content.images.homeIndustry1)} 
                   className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity w-full object-cover" 
                   alt="Healthcare" 
                 />
                 <img 
-                  key={content.images.homeIndustry2}
-                  src={content.images.homeIndustry2} 
+                  key={getBustedUrl(content.images.homeIndustry2)}
+                  src={getBustedUrl(content.images.homeIndustry2)} 
                   className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity mt-8 w-full object-cover" 
                   alt="Salon" 
                 />
