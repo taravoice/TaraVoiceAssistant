@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { storage, ensureAuth } from '../firebase';
 import { ref, getDownloadURL, listAll, deleteObject, uploadString } from 'firebase/storage';
@@ -58,18 +57,16 @@ const defaultImages: SiteImages = {
   feature6: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?q=80&w=2070&auto=format&fit=crop',
 };
 
-const systemGallery = [...Object.values(defaultImages)];
-
 const defaultContent: SiteContent = {
   home: {
     heroTitle: "AI Appointment Setter for Your Business",
-    heroSubtitle: "Automate your appointment scheduling and handle customer interactions 24/7 with human-like accuracy.",
+    heroSubtitle: "Automate your scheduling 24/7 with human-like accuracy.",
     aboutTitle: "About Tara Voice Assistant",
-    aboutText: "Tara Voice Assistant is a cutting-edge AI-driven solution designed to empower small and medium-sized businesses.",
+    aboutText: "Tara is a cutting-edge AI solution designed for SMBs.",
   },
   customSections: [],
   images: defaultImages,
-  gallery: systemGallery,
+  gallery: [],
   updatedAt: 0
 };
 
@@ -81,84 +78,61 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isStorageConfigured, setIsStorageConfigured] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   
-  const [adminPassword, setAdminPassword] = useState(() => {
-    return localStorage.getItem('tara_admin_pw') || '987654321';
-  });
+  const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
   useEffect(() => {
     const initSite = async () => {
-      // 1. Initial local load for immediate perceived performance
-      const local = localStorage.getItem('tara_site_config');
-      if (local) {
-        try { setContent(prev => ({ ...prev, ...JSON.parse(local) })); } catch (e) {}
-      }
-
       if (!storage) {
-        setIsStorageConfigured(false);
         setIsInitialized(true);
         return;
       }
       setIsStorageConfigured(true);
 
-      // 2. AUTHORITATIVE CLOUD HYDRATION
       try {
         const configRef = ref(storage, 'config/site_config.json');
-        const downloadUrl = await getDownloadURL(configRef);
+        const baseUrl = await getDownloadURL(configRef);
         
-        // Anti-Cache String ensures global sync on every visitor's refresh
-        const sep = downloadUrl.includes('?') ? '&' : '?';
-        const freshUrl = `${downloadUrl}${sep}t=${Date.now()}`;
-        
+        // Authoritative Global Sync (Cache Busting)
+        const freshUrl = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
         const response = await fetch(freshUrl);
+        
         if (response.ok) {
           const cloudConfig = await response.json();
-          
-          setContent(prev => {
-            // MERGE: Cloud settings overwrite local defaults completely
-            const merged = { 
-              ...prev, 
-              ...cloudConfig, 
-              images: { ...prev.images, ...cloudConfig.images }, // Force nested image merge
-              updatedAt: cloudConfig.updatedAt || Date.now() 
-            };
-            localStorage.setItem('tara_site_config', JSON.stringify(merged));
-            return merged;
-          });
-          console.log("☁️ SiteContext: Authoritative Global Config Loaded.");
+          setContent(prev => ({
+            ...prev,
+            ...cloudConfig,
+            images: { ...prev.images, ...cloudConfig.images }, // Deep merge images
+            updatedAt: cloudConfig.updatedAt || Date.now()
+          }));
+          console.log("☁️ Global Logic: Authoritative Cloud Config Applied.");
         }
-      } catch (err: any) {
-        console.warn("☁️ SiteContext: Cloud Config check done (might not exist yet).");
+      } catch (err) {
+        console.warn("☁️ Global Logic: Default settings in use.");
       } finally {
         setIsInitialized(true);
       }
 
-      // 3. Sync Image Gallery
+      // Sync Gallery
       try {
         const galleryListRef = ref(storage, 'gallery/');
         const res = await listAll(galleryListRef);
-        const urls = await Promise.all(res.items.map((r: any) => getDownloadURL(r)));
-        setContent(prev => ({ ...prev, gallery: [...systemGallery, ...urls] }));
+        const urls = await Promise.all(res.items.map(r => getDownloadURL(r)));
+        setContent(prev => ({ ...prev, gallery: urls }));
       } catch (e) {}
     };
     initSite();
   }, []);
 
   const saveToCloud = async (newContent: SiteContent) => {
-    const payload = { ...newContent, updatedAt: Date.now() };
-    setContent(payload);
-    localStorage.setItem('tara_site_config', JSON.stringify(payload));
-    
+    setContent(newContent);
     if (!storage) return;
     try {
       await ensureAuth();
       const configRef = ref(storage, 'config/site_config.json');
-      // Strip gallery from cloud config to save space
-      const { gallery, ...saveData } = payload;
-      await uploadString(configRef, JSON.stringify(saveData), 'raw', { contentType: 'application/json' });
-      console.log("🚀 SiteContext: Broadcaster updated cloud registry.");
-    } catch (e) {
-      console.error("🚀 SiteContext: Broadcast failed.", e);
-    }
+      const { gallery, ...saveData } = newContent;
+      const json = JSON.stringify({ ...saveData, updatedAt: Date.now() });
+      await uploadString(configRef, json, 'raw', { contentType: 'application/json' });
+    } catch (e) {}
   };
 
   const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
@@ -174,11 +148,13 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
-    await saveToCloud({ ...content, images: { ...content.images, [key]: url } });
+    // ATOMIC UPDATE: Create shallow clone, update key, save.
+    const newImages = { ...content.images, [key]: url };
+    await saveToCloud({ ...content, images: newImages });
   };
 
-  const uploadToGallery = async (file: File): Promise<void> => {
-    if (!storage) throw new Error("Connection failed.");
+  const uploadToGallery = async (file: File) => {
+    if (!storage) return;
     try {
       await ensureAuth();
       const path = `gallery/${Date.now()}_${file.name}`;
@@ -213,7 +189,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => setIsAuthenticated(false);
 
   const changePassword = (pw: string) => {
-    setAdminPassword(pw);
     localStorage.setItem('tara_admin_pw', pw);
   };
 
