@@ -34,11 +34,12 @@ const MediaManager: React.FC = () => {
       setIsSaving(true);
       
       try {
+        // Authoritative immediate update
         await updateImage(selectedSlot, url);
-        // Ensure user sees the mapping completed
-        await new Promise(r => setTimeout(r, 600));
+        // Visual pause for psychological feedback
+        await new Promise(r => setTimeout(r, 800));
       } catch (e) {
-        alert("Sync failed. Check connection.");
+        alert("Sync broadcast failed. Check bucket settings.");
       } finally {
         setIsSaving(false);
         setSelectedSlot(null);
@@ -51,38 +52,38 @@ const MediaManager: React.FC = () => {
       <div className="flex justify-between items-center">
         <div>
            <h1 className="text-3xl font-bold text-slate-900">Media Manager</h1>
-           <p className="text-slate-500 italic">Authoritative Image Mapping Source of Truth (Syncs to Cloud).</p>
+           <p className="text-slate-500 italic">Configure authoritative image mappings across the site.</p>
         </div>
         {isSaving && (
-           <div className="flex items-center text-[#0097b2] font-semibold bg-[#0097b2]/10 px-6 py-3 rounded-full shadow-sm animate-pulse">
+           <div className="flex items-center text-[#0097b2] font-semibold bg-[#0097b2]/10 px-6 py-3 rounded-full shadow-sm">
               <Loader2 className="w-5 h-5 mr-3 animate-spin" />
-              Broadcasting Config...
+              Broadcasting Changes...
            </div>
         )}
       </div>
 
-      <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 text-amber-800 flex items-start">
+      <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 text-amber-800 flex items-start shadow-sm">
         <Info className="w-5 h-5 mr-3 mt-0.5 shrink-0" />
         <p className="text-sm leading-relaxed">
-          Select an image from the gallery to map it to a specific website slot. 
-          Changes are saved to <strong>site_config.json</strong> in your Firebase Storage and broadcasted to all visitors instantly.
+          The selected images here define the source for all browsers globally. 
+          When changed, <strong>site_config.json</strong> is overwritten and other browsers will sync on next load.
         </p>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="grid grid-cols-12 gap-4 p-4 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700">
-           <div className="col-span-3">Sync Status</div>
-           <div className="col-span-6">UI Placeholder Location</div>
-           <div className="col-span-3">Live Image Mapping</div>
+           <div className="col-span-3">Status</div>
+           <div className="col-span-6">Location Placeholder</div>
+           <div className="col-span-3">Active Mapping</div>
         </div>
         
         <div className="divide-y divide-slate-100">
            {imageSlots.map((slot) => {
              const currentUrl = content.images[slot.key];
              return (
-               <div key={slot.key} className="grid grid-cols-12 gap-4 p-6 items-center hover:bg-slate-50 transition-colors group">
+               <div key={slot.key} className="grid grid-cols-12 gap-4 p-6 items-center hover:bg-slate-50 transition-colors">
                  <div className="col-span-3 flex items-center space-x-2">
-                   <div className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-sm shadow-green-200 animate-pulse"></div>
+                   <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></div>
                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">In Sync</span>
                  </div>
                  <div className="col-span-6">
@@ -92,7 +93,7 @@ const MediaManager: React.FC = () => {
                  <div className="col-span-3">
                    <div 
                      onClick={() => !isSaving && handleOpenGallery(slot.key)}
-                     className={`relative aspect-[3/2] bg-slate-100 rounded-xl overflow-hidden cursor-pointer border-2 border-slate-200 hover:border-[#0097b2] transition-all shadow-inner ${isSaving ? 'opacity-50 grayscale' : ''}`}
+                     className={`relative aspect-[3/2] bg-slate-100 rounded-xl overflow-hidden cursor-pointer border-2 border-slate-200 hover:border-[#0097b2] transition-all ${isSaving ? 'opacity-50' : ''}`}
                    >
                      <img src={currentUrl} alt={slot.section} className="w-full h-full object-contain p-2" />
                      <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
