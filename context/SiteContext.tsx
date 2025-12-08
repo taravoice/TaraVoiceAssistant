@@ -44,6 +44,7 @@ interface SiteContextType {
   isInitialized: boolean;
 }
 
+// Authoritative Default: No local file fallbacks to prevent cross-browser sync confusion
 const defaultImages: SiteImages = {
   logo: 'https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?q=80&w=200&auto=format&fit=crop',
   homeHeroBg: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop',
@@ -92,8 +93,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const configRef = ref(storage, 'config/site_config.json');
         const baseUrl = await getDownloadURL(configRef);
         
-        // Authoritative Global Sync (Cache Busting on Fetch)
-        const freshUrl = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+        // Force Cache Busting on fetch so every browser gets the live update
+        const separator = baseUrl.includes('?') ? '&' : '?';
+        const freshUrl = `${baseUrl}${separator}t=${Date.now()}`;
         const response = await fetch(freshUrl);
         
         if (response.ok) {
@@ -101,13 +103,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setContent(prev => ({
             ...prev,
             ...cloudConfig,
-            images: { ...prev.images, ...cloudConfig.images },
             updatedAt: cloudConfig.updatedAt || Date.now()
           }));
-          console.log("☁️ SITE CONTEXT: Authoritative Cloud Config Applied.");
+          console.log("☁️ SITE CONTEXT: GLOBAL SYNC SUCCESSFUL.");
         }
       } catch (err) {
-        console.warn("☁️ SITE CONTEXT: Falling back to default settings.");
+        console.warn("☁️ SITE CONTEXT: Using local fallback defaults.");
       } finally {
         setIsInitialized(true);
       }
@@ -124,12 +125,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const saveToCloud = async (newContent: SiteContent) => {
-    // Binary Cache Buster: Generate timestamp once and use for both state and cloud save
     const now = Date.now();
     const contentToApply = { ...newContent, updatedAt: now };
     
-    // Update local state IMMEDIATELY to trigger UI re-renders with the new ?t= parameter
+    // Update local state instantly for the current user
     setContent(contentToApply);
+    localStorage.setItem('tara_site_config', JSON.stringify(contentToApply));
     
     if (!storage) return;
     try {
@@ -137,9 +138,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const configRef = ref(storage, 'config/site_config.json');
       const { gallery, ...saveData } = contentToApply;
       await uploadString(configRef, JSON.stringify(saveData), 'raw', { contentType: 'application/json' });
-      console.log("☁️ SITE CONTEXT: Config saved to cloud permanently.");
+      console.log("☁️ SITE CONTEXT: Configuration broadcasted to cloud.");
     } catch (e) {
-      console.error("☁️ SITE CONTEXT: Failed to save config to cloud.", e);
+      console.error("☁️ SITE CONTEXT: broadcast failed.", e);
     }
   };
 
