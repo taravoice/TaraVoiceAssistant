@@ -13,9 +13,9 @@ const AdminLogin: React.FC = () => {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Check Email (Fixed)
-    if (email !== 'taravoiceassistant@gmail.com') {
-       alert('Invalid Email Address.');
+    // Strict Email Validation
+    if (email.toLowerCase().trim() !== 'taravoiceassistant@gmail.com') {
+       alert('Access Denied: Invalid Email Address.');
        return;
     }
 
@@ -25,7 +25,7 @@ const AdminLogin: React.FC = () => {
     if (success) {
       navigate('/admin/dashboard');
     } else {
-      alert('Invalid Password. The default is 987654321.');
+      alert('Invalid Password.');
     }
   };
 
