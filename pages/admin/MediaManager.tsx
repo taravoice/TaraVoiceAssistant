@@ -33,14 +33,19 @@ const MediaManager: React.FC = () => {
       setIsGalleryOpen(false); // Close first for better UX
       setIsSaving(true);
       
-      console.log(`Replacing ${selectedSlot} with ${url}`); // Debug
-      await updateImage(selectedSlot, url);
+      console.log(`MediaManager: Replacing ${selectedSlot} with ${url}`); 
       
-      // Small delay to show the saving spinner
-      setTimeout(() => {
+      try {
+        await updateImage(selectedSlot, url);
+        // Add a small artificial delay so the user sees the "Saving" spinner
+        await new Promise(r => setTimeout(r, 800));
+      } catch (e) {
+        console.error("Failed to update image:", e);
+        alert("Failed to save image choice. Please try again.");
+      } finally {
         setIsSaving(false);
         setSelectedSlot(null);
-      }, 800);
+      }
     }
   };
 
