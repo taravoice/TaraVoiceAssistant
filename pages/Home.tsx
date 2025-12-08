@@ -14,6 +14,7 @@ const Home: React.FC = () => {
       {/* Hero Section */}
       <section className="relative bg-[#d9d9d9] overflow-hidden">
         <div 
+          key={content.images.homeHeroBg} /* Force re-render if bg changes */
           className="absolute inset-0 bg-cover bg-center opacity-5 transition-all duration-500"
           style={{ backgroundImage: `url('${content.images.homeHeroBg}')` }}
         ></div>
@@ -109,7 +110,7 @@ const Home: React.FC = () => {
                { icon: BarChart3, title: "Business Insights", desc: "Analytics on call volume, peak times, and customer intent." },
              ].map((feature, idx) => (
                <div key={idx} className="bg-white p-8 rounded-2xl shadow-sm hover:shadow-md transition-shadow border border-slate-200 group">
-                 <div className="w-12 h-12 bg-[#0097b2]/10 rounded-xl flex items-center justify-center text-[#0097b2] mb-6 group-hover:scale-110 transition-transform">
+                 <div className="w-12 h-12 bg-[#0097b2] rounded-xl flex items-center justify-center text-white mb-6 group-hover:scale-110 transition-transform">
                    <feature.icon className="w-6 h-6" />
                  </div>
                  <h3 className="text-xl font-bold text-slate-900 mb-3">{feature.title}</h3>
@@ -142,8 +143,18 @@ const Home: React.FC = () => {
                </ul>
              </div>
              <div className="grid grid-cols-2 gap-4">
-                <img src={content.images.homeIndustry1} className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity w-full object-cover" alt="Healthcare" />
-                <img src={content.images.homeIndustry2} className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity mt-8 w-full object-cover" alt="Salon" />
+                <img 
+                  key={content.images.homeIndustry1}
+                  src={content.images.homeIndustry1} 
+                  className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity w-full object-cover" 
+                  alt="Healthcare" 
+                />
+                <img 
+                  key={content.images.homeIndustry2}
+                  src={content.images.homeIndustry2} 
+                  className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity mt-8 w-full object-cover" 
+                  alt="Salon" 
+                />
              </div>
            </div>
         </div>
