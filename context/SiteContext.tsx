@@ -67,7 +67,7 @@ const defaultContent: SiteContent = {
   customSections: [],
   images: defaultImages,
   gallery: [],
-  updatedAt: 0
+  updatedAt: Date.now()
 };
 
 const SiteContext = createContext<SiteContextType | undefined>(undefined);
@@ -81,8 +81,16 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
   const initSite = useCallback(async () => {
+    // 1. Load Local Storage Backup instantly for zero-flicker load
+    const local = localStorage.getItem('tara_site_config');
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        setContent(prev => ({ ...prev, ...parsed }));
+      } catch (e) {}
+    }
+
     if (!storage) {
-      console.warn("☁️ SITE CONTEXT: Storage unavailable.");
       setIsInitialized(true);
       return;
     }
@@ -91,11 +99,10 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const configRef = ref(storage, 'config/site_config.json');
       const baseUrl = await getDownloadURL(configRef);
-      // AUTHORITATIVE CACHE BUSTING: Forces global browsers to fetch new mapping instantly
+      // AUTHORITATIVE SYNC: Fetch cloud data and force refresh for all browsers
       const separator = baseUrl.includes('?') ? '&' : '?';
-      const freshUrl = `${baseUrl}${separator}t=${Date.now()}`;
-
-      const response = await fetch(freshUrl, { cache: 'no-store' });
+      const response = await fetch(`${baseUrl}${separator}t=${Date.now()}`, { cache: 'no-store' });
+      
       if (response.ok) {
         const cloudConfig = await response.json();
         if (cloudConfig) {
@@ -107,15 +114,14 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
                updatedAt: cloudConfig.updatedAt || prev.updatedAt,
                gallery: prev.gallery
              };
-             // Sync cloud to local backup immediately
              localStorage.setItem('tara_site_config', JSON.stringify(updated));
+             console.log("☁️ SITE CONTEXT: Globally Synced Config Loaded.");
              return updated;
           });
-          console.log("☁️ SITE CONTEXT: Auth Config Hydrated.");
         }
       }
     } catch (err) {
-      console.log("☁️ SITE CONTEXT: Loading local defaults.");
+      console.log("☁️ SITE CONTEXT: Falling back to Local defaults.");
     }
 
     try {
@@ -142,9 +148,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         contentType: 'application/json',
         cacheControl: 'no-cache, no-store, must-revalidate'
       });
-      console.log("☁️ SITE CONTEXT: Saved to Firebase.");
+      console.log("☁️ SITE CONTEXT: Broadcasted update to global storage.");
     } catch (e) {
-      console.error("☁️ SITE CONTEXT: Save failed.", e);
+      console.error("☁️ SITE CONTEXT: Broadcast failed.", e);
     }
   }, []);
 
@@ -156,8 +162,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         home: { ...prev.home, [key]: value }, 
         updatedAt: time 
       };
-      saveToCloud(updated);
       localStorage.setItem('tara_site_config', JSON.stringify(updated));
+      saveToCloud(updated);
       return updated;
     });
   };
@@ -170,8 +176,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         customSections: [...prev.customSections, section], 
         updatedAt: time 
       };
-      saveToCloud(updated);
       localStorage.setItem('tara_site_config', JSON.stringify(updated));
+      saveToCloud(updated);
       return updated;
     });
   };
@@ -184,14 +190,15 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         customSections: prev.customSections.filter(s => s.id !== id), 
         updatedAt: time 
       };
-      saveToCloud(updated);
       localStorage.setItem('tara_site_config', JSON.stringify(updated));
+      saveToCloud(updated);
       return updated;
     });
   };
 
   const updateImage = async (key: string, url: string) => {
     const time = Date.now();
+    // ATOMIC UPDATE: Immediate Local change followed by cloud persistence
     setContent(prev => {
       const updated = { 
         ...prev, 
@@ -201,8 +208,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }, 
         updatedAt: time 
       };
-      saveToCloud(updated);
       localStorage.setItem('tara_site_config', JSON.stringify(updated));
+      saveToCloud(updated);
       return updated;
     });
   };
