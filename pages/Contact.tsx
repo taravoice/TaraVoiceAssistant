@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Mail, Phone, MapPin, Send, Loader2 } from 'lucide-react';
+import { Mail, Phone, Send, Loader2 } from 'lucide-react';
 import { Button } from '../components/Button';
 import { useSite } from '../context/SiteContext';
 import emailjs from '@emailjs/browser';
@@ -8,6 +8,8 @@ const Contact: React.FC = () => {
   const formRef = useRef<HTMLFormElement>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
+  
   const { content } = useSite();
   const customSections = content.customSections.filter(s => s.page === 'Contact');
 
@@ -17,15 +19,15 @@ const Contact: React.FC = () => {
 
     setLoading(true);
     setStatus('idle');
+    setErrorMessage('');
 
     // Get keys from environment
-    // Use getEnv helper concept or direct import.meta if standard
     const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
     const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
     const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
 
     if (!serviceId || !templateId || !publicKey) {
-      alert("EmailJS configuration missing. Please check Vercel Environment Variables.");
+      alert("EmailJS configuration missing. Please check Vercel Environment Variables and Redeploy.");
       setLoading(false);
       return;
     }
@@ -39,9 +41,11 @@ const Contact: React.FC = () => {
       );
       setStatus('success');
       formRef.current.reset();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Email Error:', error);
       setStatus('error');
+      // Extract useful error text from EmailJS response
+      setErrorMessage(error?.text || error?.message || "Connection failed");
     } finally {
       setLoading(false);
     }
@@ -103,7 +107,9 @@ const Contact: React.FC = () => {
 
               {status === 'error' && (
                 <div className="bg-red-50 text-red-700 p-4 rounded-xl mb-4 border border-red-200">
-                  Something went wrong. Please try again or email us directly at info@taravoiceassistant.com.
+                  <strong>Error:</strong> {errorMessage}
+                  <br/>
+                  <span className="text-sm">Please try again or email us directly at info@taravoiceassistant.com.</span>
                 </div>
               )}
 
