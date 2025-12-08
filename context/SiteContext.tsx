@@ -82,7 +82,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const initSite = useCallback(async () => {
     if (!storage) {
-      console.warn("☁️ SITE CONTEXT: Storage not available.");
+      console.warn("☁️ SITE CONTEXT: Storage unavailable.");
       setIsInitialized(true);
       return;
     }
@@ -91,35 +91,33 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const configRef = ref(storage, 'config/site_config.json');
       const baseUrl = await getDownloadURL(configRef);
-
-      // FORCE CACHE BUSTING: Ensures fresh config on every load globally
+      // AUTHORITATIVE CACHE BUSTING: Forces global browsers to fetch new mapping instantly
       const separator = baseUrl.includes('?') ? '&' : '?';
       const freshUrl = `${baseUrl}${separator}t=${Date.now()}`;
 
       const response = await fetch(freshUrl, { cache: 'no-store' });
       if (response.ok) {
         const cloudConfig = await response.json();
-
-        if (cloudConfig && cloudConfig.images) {
-           setContent(prev => ({
-             ...prev,
-             ...cloudConfig,
-             // Authoritative merge of image placeholders
-             images: {
-               ...prev.images,
-               ...cloudConfig.images
-             },
-             // Keep current gallery which we fetch separately below
-             gallery: prev.gallery
-           }));
-           console.log("☁️ SITE CONTEXT: Global configuration hydrated from Firebase.");
+        if (cloudConfig) {
+          setContent(prev => {
+             const updated = {
+               ...prev,
+               ...cloudConfig,
+               images: { ...prev.images, ...cloudConfig.images },
+               updatedAt: cloudConfig.updatedAt || prev.updatedAt,
+               gallery: prev.gallery
+             };
+             // Sync cloud to local backup immediately
+             localStorage.setItem('tara_site_config', JSON.stringify(updated));
+             return updated;
+          });
+          console.log("☁️ SITE CONTEXT: Auth Config Hydrated.");
         }
       }
     } catch (err) {
-      console.log("☁️ SITE CONTEXT: Falling back to default configuration.");
+      console.log("☁️ SITE CONTEXT: Loading local defaults.");
     }
 
-    // List all files in gallery folder for the media selector
     try {
       const galleryListRef = ref(storage, 'gallery/');
       const res = await listAll(galleryListRef);
@@ -139,57 +137,61 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await ensureAuth();
       const configRef = ref(storage, 'config/site_config.json');
-      
-      // We don't save the full gallery list in the JSON as we use listAll() to rebuild it
       const { gallery, ...saveData } = newContent;
-
       await uploadString(configRef, JSON.stringify(saveData), 'raw', {
         contentType: 'application/json',
         cacheControl: 'no-cache, no-store, must-revalidate'
       });
-      console.log("☁️ SITE CONTEXT: Global changes pushed to Firebase.");
+      console.log("☁️ SITE CONTEXT: Saved to Firebase.");
     } catch (e) {
-      console.error("☁️ SITE CONTEXT: Cloud save broadcast failed.", e);
+      console.error("☁️ SITE CONTEXT: Save failed.", e);
     }
   }, []);
 
   const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
+    const time = Date.now();
     setContent(prev => {
       const updated = { 
         ...prev, 
         home: { ...prev.home, [key]: value }, 
-        updatedAt: Date.now() 
+        updatedAt: time 
       };
       saveToCloud(updated);
+      localStorage.setItem('tara_site_config', JSON.stringify(updated));
       return updated;
     });
   };
 
   const addCustomSection = async (section: CustomSection) => {
+    const time = Date.now();
     setContent(prev => {
       const updated = { 
         ...prev, 
         customSections: [...prev.customSections, section], 
-        updatedAt: Date.now() 
+        updatedAt: time 
       };
       saveToCloud(updated);
+      localStorage.setItem('tara_site_config', JSON.stringify(updated));
       return updated;
     });
   };
 
   const removeCustomSection = async (id: string) => {
+    const time = Date.now();
     setContent(prev => {
       const updated = { 
         ...prev, 
         customSections: prev.customSections.filter(s => s.id !== id), 
-        updatedAt: Date.now() 
+        updatedAt: time 
       };
       saveToCloud(updated);
+      localStorage.setItem('tara_site_config', JSON.stringify(updated));
       return updated;
     });
   };
 
   const updateImage = async (key: string, url: string) => {
+    const time = Date.now();
     setContent(prev => {
       const updated = { 
         ...prev, 
@@ -197,9 +199,10 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ...prev.images, 
           [key]: url 
         }, 
-        updatedAt: Date.now() 
+        updatedAt: time 
       };
       saveToCloud(updated);
+      localStorage.setItem('tara_site_config', JSON.stringify(updated));
       return updated;
     });
   };
@@ -213,7 +216,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { uploadBytes } = await import('firebase/storage');
       const snap = await uploadBytes(storageRef, file);
       const url = await getDownloadURL(snap.ref);
-
       setContent(prev => ({ ...prev, gallery: [url, ...prev.gallery] }));
     } catch (e) { throw e; }
   };
