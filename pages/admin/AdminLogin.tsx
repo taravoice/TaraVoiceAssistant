@@ -12,12 +12,20 @@ const AdminLogin: React.FC = () => {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // Simple mock authentication
-    if (email === 'admin@taravoiceassistant.com' && password === 'admin') {
-      login();
+    
+    // Check Email (Fixed)
+    if (email !== 'taravoiceassistant@gmail.com') {
+       alert('Invalid Email Address.');
+       return;
+    }
+
+    // Check Password (Dynamic from Context)
+    const success = login(password);
+    
+    if (success) {
       navigate('/admin/dashboard');
     } else {
-      alert('Invalid credentials. Try admin@taravoiceassistant.com / admin');
+      alert('Invalid Password. The default is 987654321.');
     }
   };
 
@@ -40,7 +48,7 @@ const AdminLogin: React.FC = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#0097b2] focus:border-transparent outline-none"
-              placeholder="admin@taravoiceassistant.com"
+              placeholder="taravoiceassistant@gmail.com"
             />
           </div>
           <div>
