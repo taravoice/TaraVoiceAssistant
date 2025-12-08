@@ -94,15 +94,20 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!storage) return {};
 
     const pairs = await Promise.all(
-      Object.entries(images).map(async ([key, path]) => {
-        try {
-          const url = await getDownloadURL(ref(storage, path));
-          return [key, url];
-        } catch {
-          return [key, ""]; // fallback
-        }
-      })
-    );
+  Object.entries(images).map(async ([key, path]) => {
+    try {
+      if (!path) return [key, ""];
+
+      const storageRef = ref(storage, String(path));
+      const url = await getDownloadURL(storageRef);
+
+      return [key, url];
+    } catch {
+      return [key, ""];
+    }
+  })
+);
+
 
     return Object.fromEntries(pairs);
   }, []);
