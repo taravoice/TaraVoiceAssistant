@@ -1,31 +1,21 @@
+
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 
-// Universal environment variable getter
 const getEnv = (key: string) => {
-  // Check for Node.js (Serverless Function)
-  if (typeof process !== 'undefined' && process.env && process.env[key]) {
-    return process.env[key];
-  }
-  // Check for Vite (Browser)
+  if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
   try {
     // @ts-ignore
-    if (import.meta.env && import.meta.env[key]) {
-      // @ts-ignore
-      return import.meta.env[key];
-    }
-  } catch (e) {
-    // Ignore error
-  }
+    if (import.meta.env && import.meta.env[key]) return import.meta.env[key];
+  } catch (e) {}
   return undefined;
 };
 
-// Use VITE_ prefix variables, but fallback to non-prefixed if needed (common in backend envs)
 const apiKey = getEnv('VITE_FIREBASE_API_KEY') || getEnv('FIREBASE_API_KEY');
 let bucket = getEnv('VITE_FIREBASE_STORAGE_BUCKET') || getEnv('FIREBASE_STORAGE_BUCKET');
 
-// CLEANER: Remove gs:// or protocols
+// CLEANER: Strict parsing of bucket syntax
 if (bucket) {
   bucket = bucket.replace(/^gs:\/\//, '').replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
@@ -47,21 +37,18 @@ if (apiKey && bucket) {
     const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     storage = getStorage(app);
     auth = getAuth(app);
-    console.log("✅ FIREBASE INITIALIZED. Bucket:", bucket);
-  } catch (error) {
-    console.error("❌ Failed to initialize Firebase:", error);
+    console.log("🔥 Firebase: Ready for Cloud Sync. Bucket ID:", bucket);
+  } catch (err) {
+    console.error("🔥 Firebase: Initialization failed.", err);
   }
 }
 
-// Helper to ensure we have permission to write (for API routes)
 export const ensureAuth = async () => {
   if (auth && !auth.currentUser) {
     try {
-      console.log("Attempting Anonymous Auth...");
       await signInAnonymously(auth);
-      console.log("Auth Success");
     } catch (e) {
-      console.error("Auth failed", e);
+      console.error("🔥 Firebase: Anonymous Auth Blocked.", e);
       throw e;
     }
   }
