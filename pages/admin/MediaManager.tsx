@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSite } from '../../context/SiteContext';
 import { ImageGalleryModal } from '../../components/ImageGalleryModal';
-import { Loader2 } from 'lucide-react';
+import { Loader2, CheckCircle } from 'lucide-react';
 
 const imageSlots = [
   { key: 'logo', page: 'Global', section: 'Website Logo' },
@@ -29,11 +29,14 @@ const MediaManager: React.FC = () => {
 
   const handleSelectImage = async (url: string) => {
     if (selectedSlot) {
+      setIsGalleryOpen(false); // Close first for better UX
       setIsSaving(true);
       await updateImage(selectedSlot, url);
-      setIsSaving(false);
-      setIsGalleryOpen(false);
-      setSelectedSlot(null);
+      // Small delay to show the saving spinner
+      setTimeout(() => {
+        setIsSaving(false);
+        setSelectedSlot(null);
+      }, 800);
     }
   };
 
@@ -45,9 +48,9 @@ const MediaManager: React.FC = () => {
            <p className="text-slate-500">Manage and replace images used across your website.</p>
         </div>
         {isSaving && (
-           <div className="flex items-center text-[#0097b2] font-semibold bg-[#0097b2]/10 px-4 py-2 rounded-full animate-pulse">
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Saving changes to cloud...
+           <div className="flex items-center text-[#0097b2] font-semibold bg-[#0097b2]/10 px-6 py-3 rounded-full shadow-sm animate-pulse">
+              <Loader2 className="w-5 h-5 mr-3 animate-spin" />
+              Updating Website...
            </div>
         )}
       </div>
@@ -55,9 +58,9 @@ const MediaManager: React.FC = () => {
       {/* Main List Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="grid grid-cols-12 gap-4 p-4 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700">
-           <div className="col-span-3">Upload Date</div>
+           <div className="col-span-3">Status</div>
            <div className="col-span-6">Page & Section</div>
-           <div className="col-span-3">Preview</div>
+           <div className="col-span-3">Current Image</div>
         </div>
         
         <div className="divide-y divide-slate-100">
@@ -65,9 +68,9 @@ const MediaManager: React.FC = () => {
              const currentUrl = content.images[slot.key];
              return (
                <div key={slot.key} className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-slate-50 transition-colors">
-                 <div className="col-span-3 text-sm text-slate-500">
-                   {/* Mock date since we don't track update time per slot yet */}
-                   Oct 24, 2023
+                 <div className="col-span-3 text-sm text-slate-500 flex items-center">
+                   <div className="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
+                   Active
                  </div>
                  <div className="col-span-6">
                    <div className="font-medium text-slate-900">{slot.page}</div>
@@ -76,11 +79,12 @@ const MediaManager: React.FC = () => {
                  <div className="col-span-3">
                    <div 
                      onClick={() => !isSaving && handleOpenGallery(slot.key)}
-                     className={`relative group w-24 h-16 bg-slate-100 rounded-lg overflow-hidden cursor-pointer border-2 border-transparent hover:border-[#0097b2] ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                     className={`relative group w-32 h-20 bg-slate-100 rounded-lg overflow-hidden cursor-pointer border-2 border-transparent hover:border-[#0097b2] ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                     title="Click to Replace"
                    >
-                     <img src={currentUrl} alt={slot.section} className="w-full h-full object-contain p-1" />
-                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                       <span className="text-xs text-white font-medium">Replace</span>
+                     <img src={currentUrl} alt={slot.section} className="w-full h-full object-contain p-2" />
+                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                       <span className="text-xs text-white font-bold bg-[#0097b2] px-2 py-1 rounded-full">Replace</span>
                      </div>
                    </div>
                  </div>
