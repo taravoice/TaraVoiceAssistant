@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { storage, ensureAuth } from '../firebase';
 import { ref, getDownloadURL, listAll, deleteObject, uploadString } from 'firebase/storage';
@@ -24,6 +25,7 @@ interface SiteContent {
   customSections: CustomSection[];
   images: SiteImages;
   gallery: string[]; 
+  updatedAt: number; // Added for sync tracking
 }
 
 interface SiteContextType {
@@ -68,7 +70,8 @@ const defaultContent: SiteContent = {
   },
   customSections: [],
   images: defaultImages,
-  gallery: systemGallery
+  gallery: systemGallery,
+  updatedAt: 0
 };
 
 const SiteContext = createContext<SiteContextType | undefined>(undefined);
@@ -84,11 +87,13 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const initSite = async () => {
-      // 1. Load from localStorage (Instant paint for current user)
+      // 1. Check LocalStorage for instant paint (Old user/Cache)
+      let localTimestamp = 0;
       const cached = localStorage.getItem('tara_site_config');
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
+          localTimestamp = parsed.updatedAt || 0;
           setContent(prev => ({ ...prev, ...parsed }));
         } catch (e) {}
       }
@@ -99,40 +104,47 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       setIsStorageConfigured(true);
 
-      // 2. Load from Firebase (Mandatory Sync for Other Browsers)
+      // 2. Fetch from Cloud (Absolute Truth)
       try {
         const configRef = ref(storage, 'config/site_config.json');
         const downloadUrl = await getDownloadURL(configRef);
         
-        // Advanced Cache Busting: Detect tokens in URL and append correctly
+        // Clear browser cache for this JSON fetch specifically
         const separator = downloadUrl.includes('?') ? '&' : '?';
         const finalUrl = `${downloadUrl}${separator}nocache=${Date.now()}`;
         
         const response = await fetch(finalUrl);
         if (response.ok) {
           const cloudConfig = await response.json();
-          console.log("☁️ SITE CONTEXT: Cloud Configuration Hydrated correctly for this device.");
-          
-          setContent(prev => {
-            const updated = { 
-              ...prev, 
-              ...cloudConfig,
-              gallery: prev.gallery // Preserve memory gallery items
-            };
-            // Sync current browser's storage with cloud truth
-            localStorage.setItem('tara_site_config', JSON.stringify(updated));
-            return updated;
-          });
+          const cloudTimestamp = cloudConfig.updatedAt || 0;
+
+          // Only apply if cloud data is newer or local storage is empty
+          if (cloudTimestamp > localTimestamp || localTimestamp === 0) {
+            console.log(`☁️ SITE CONTEXT: Cloud sync initiated. (Cloud: ${cloudTimestamp} > Local: ${localTimestamp})`);
+            
+            setContent(prev => {
+              const updated = { 
+                ...prev, 
+                ...cloudConfig,
+                gallery: prev.gallery // Memory gallery items are local to session
+              };
+              // Persist cloud truth to local storage for this device
+              localStorage.setItem('tara_site_config', JSON.stringify(updated));
+              return updated;
+            });
+          } else {
+            console.log("☁️ SITE CONTEXT: Local state is already up-to-date with cloud.");
+          }
         }
       } catch (error: any) {
         if (error.code === 'storage/object-not-found') {
-          console.info("☁️ SITE CONTEXT: No existing cloud configuration found. Using defaults.");
+          console.info("☁️ SITE CONTEXT: No existing cloud configuration found.");
         } else {
-          console.error("☁️ SITE CONTEXT: Failed to hydrate cloud config:", error.message);
+          console.error("☁️ SITE CONTEXT: Cloud sync failure:", error.message);
         }
       }
 
-      // 3. Sync Image Library
+      // 3. Sync Image Library for current user
       try {
         const galleryListRef = ref(storage, 'gallery/');
         const res = await listAll(galleryListRef);
@@ -149,50 +161,50 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const persistToCloud = async (newContent: SiteContent) => {
-    // 1. Save locally first (instant)
-    localStorage.setItem('tara_site_config', JSON.stringify(newContent));
+    // Inject current timestamp to force cross-browser sync detection
+    const timestampedContent = { ...newContent, updatedAt: Date.now() };
+
+    // 1. Update Local State & Storage
+    setContent(timestampedContent);
+    localStorage.setItem('tara_site_config', JSON.stringify(timestampedContent));
     
-    // 2. Upload to Cloud (Sync)
+    // 2. Upload JSON to Cloud
     if (!storage) return;
     try {
        await ensureAuth();
        const configRef = ref(storage, 'config/site_config.json');
-       const { gallery, ...saveData } = newContent;
+       const { gallery, ...saveData } = timestampedContent;
        await uploadString(configRef, JSON.stringify(saveData), 'raw', {
            contentType: 'application/json'
        });
-       console.log("🚀 SITE CONTEXT: Cloud Configuration Updated. Global sync active.");
+       console.log("🚀 SITE CONTEXT: Changes synced to Cloud. Global users will update on next visit.");
     } catch (error) {
-       console.error("🚀 SITE CONTEXT: Failed to save to cloud.", error);
+       console.error("🚀 SITE CONTEXT: Cloud persist failure.", error);
     }
   };
 
   const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
     const newContent = { ...content, home: { ...content.home, [key]: value } };
-    setContent(newContent);
     await persistToCloud(newContent);
   };
 
   const addCustomSection = async (section: CustomSection) => {
     const newContent = { ...content, customSections: [...content.customSections, section] };
-    setContent(newContent);
     await persistToCloud(newContent);
   };
 
   const removeCustomSection = async (id: string) => {
     const newContent = { ...content, customSections: content.customSections.filter(s => s.id !== id) };
-    setContent(newContent);
     await persistToCloud(newContent);
   };
 
   const updateImage = async (key: string, url: string) => {
     const newContent = { ...content, images: { ...content.images, [key]: url } };
-    setContent(newContent);
     await persistToCloud(newContent);
   };
 
   const uploadToGallery = async (file: File): Promise<void> => {
-    if (!storage) throw new Error("Firebase storage connection unavailable.");
+    if (!storage) throw new Error("Storage unreachable.");
     try {
       await ensureAuth();
       const storageRef = ref(storage, `gallery/${Date.now()}_${file.name}`);
@@ -253,6 +265,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useSite = () => {
   const context = useContext(SiteContext);
-  if (!context) throw new Error('useSite must be used within a SiteProvider');
+  if (!context) throw new Error('useSite error');
   return context;
 };
