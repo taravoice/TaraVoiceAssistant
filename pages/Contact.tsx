@@ -1,20 +1,50 @@
-import React, { useState } from 'react';
-import { Mail, Phone, MapPin, Send } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Mail, Phone, MapPin, Send, Loader2 } from 'lucide-react';
 import { Button } from '../components/Button';
+import { useSite } from '../context/SiteContext';
+import emailjs from '@emailjs/browser';
 
 const Contact: React.FC = () => {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    message: ''
-  });
+  const formRef = useRef<HTMLFormElement>(null);
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const { content } = useSite();
+  const customSections = content.customSections.filter(s => s.page === 'Contact');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate submission
-    alert('Thank you for your interest! We will contact you shortly.');
-    setFormData({ name: '', email: '', phone: '', message: '' });
+    if (!formRef.current) return;
+
+    setLoading(true);
+    setStatus('idle');
+
+    // Get keys from environment
+    // Use getEnv helper concept or direct import.meta if standard
+    const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+    const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+    const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+
+    if (!serviceId || !templateId || !publicKey) {
+      alert("EmailJS configuration missing. Please check Vercel Environment Variables.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      await emailjs.sendForm(
+        serviceId,
+        templateId,
+        formRef.current,
+        publicKey
+      );
+      setStatus('success');
+      formRef.current.reset();
+    } catch (error) {
+      console.error('Email Error:', error);
+      setStatus('error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -62,16 +92,28 @@ const Contact: React.FC = () => {
 
           {/* Form */}
           <div>
-            <form onSubmit={handleSubmit} className="space-y-6 bg-white p-8 border border-slate-200 rounded-3xl shadow-lg">
+            <form ref={formRef} onSubmit={handleSubmit} className="space-y-6 bg-white p-8 border border-slate-200 rounded-3xl shadow-lg">
               <h2 className="text-2xl font-bold text-slate-900 mb-2">Send us a Message</h2>
+              
+              {status === 'success' && (
+                <div className="bg-green-50 text-green-700 p-4 rounded-xl mb-4 border border-green-200">
+                  Thank you! Your message has been sent successfully. We will be in touch shortly.
+                </div>
+              )}
+
+              {status === 'error' && (
+                <div className="bg-red-50 text-red-700 p-4 rounded-xl mb-4 border border-red-200">
+                  Something went wrong. Please try again or email us directly at info@taravoiceassistant.com.
+                </div>
+              )}
+
               <div className="grid md:grid-cols-2 gap-6">
                  <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
                     <input 
                       type="text" 
+                      name="user_name"
                       required
-                      value={formData.name}
-                      onChange={(e) => setFormData({...formData, name: e.target.value})}
                       className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#0097b2] focus:border-transparent outline-none transition-all"
                       placeholder="John Doe"
                     />
@@ -80,9 +122,8 @@ const Contact: React.FC = () => {
                     <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
                     <input 
                       type="email" 
+                      name="user_email"
                       required
-                      value={formData.email}
-                      onChange={(e) => setFormData({...formData, email: e.target.value})}
                       className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#0097b2] focus:border-transparent outline-none transition-all"
                       placeholder="john@example.com"
                     />
@@ -93,8 +134,7 @@ const Contact: React.FC = () => {
                  <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
                  <input 
                    type="tel" 
-                   value={formData.phone}
-                   onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                   name="user_phone"
                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#0097b2] focus:border-transparent outline-none transition-all"
                    placeholder="(555) 000-0000"
                  />
@@ -104,20 +144,46 @@ const Contact: React.FC = () => {
                  <label className="block text-sm font-medium text-slate-700 mb-1">How can we help?</label>
                  <textarea 
                    rows={4} 
+                   name="message"
                    required
-                   value={formData.message}
-                   onChange={(e) => setFormData({...formData, message: e.target.value})}
                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#0097b2] focus:border-transparent outline-none transition-all resize-none"
                    placeholder="Tell us about your business needs..."
                  ></textarea>
               </div>
 
-              <Button type="submit" size="lg" fullWidth className="flex justify-center items-center">
-                 Send Message <Send className="ml-2 w-4 h-4" />
+              <Button type="submit" size="lg" fullWidth className="flex justify-center items-center" disabled={loading}>
+                 {loading ? (
+                    <>
+                       <Loader2 className="mr-2 w-4 h-4 animate-spin" /> Sending...
+                    </>
+                 ) : (
+                    <>
+                       Send Message <Send className="ml-2 w-4 h-4" />
+                    </>
+                 )}
               </Button>
             </form>
           </div>
         </div>
+
+        {/* Custom Sections */}
+        {customSections.map((section) => (
+          <section key={section.id} className="py-20 mt-12 bg-white rounded-3xl shadow-sm">
+             <div className="px-8">
+                <div className="grid md:grid-cols-2 gap-12 items-center">
+                   <div className="order-2 md:order-1">
+                      <h2 className="text-3xl font-bold text-slate-900 mb-6">{section.title}</h2>
+                      <p className="text-lg text-slate-600 leading-relaxed whitespace-pre-wrap">{section.content}</p>
+                   </div>
+                   {section.image && (
+                     <div className="order-1 md:order-2">
+                        <img src={section.image} alt={section.title} className="rounded-2xl shadow-lg w-full h-auto object-cover" />
+                     </div>
+                   )}
+                </div>
+             </div>
+          </section>
+        ))}
       </div>
     </div>
   );
