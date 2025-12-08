@@ -45,7 +45,7 @@ interface SiteContextType {
 }
 
 const defaultImages: SiteImages = {
-  logo: '/logo.png',
+  logo: '/logo-default.png',
   homeHeroBg: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop',
   homeIndustry1: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?q=80&w=800&auto=format&fit=crop',
   homeIndustry2: 'https://images.unsplash.com/photo-1600948836101-f9ffda59d250?q=80&w=800&auto=format&fit=crop',
