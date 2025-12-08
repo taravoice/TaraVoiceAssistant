@@ -103,15 +103,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
             <div className="col-span-1 md:col-span-1">
-              <div className="mb-6">
-                {/* Using brightness-0 invert to make the logo white for dark footer */}
-                <img 
-                  key={`footer-${content.images.logo}`}
-                  src={content.images.logo} 
-                  alt="Tara Voice Assistant" 
-                  className="h-10 w-auto object-contain brightness-0 invert opacity-90" 
-                />
-              </div>
+              {/* Logo Removed as requested */}
               <p className="text-slate-400 text-sm leading-relaxed mb-6">
                 Revolutionizing customer engagement through innovative AI automation. Always on, always accurate.
               </p>
