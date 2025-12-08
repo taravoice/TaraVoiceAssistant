@@ -28,10 +28,10 @@ interface SiteContent {
 
 interface SiteContextType {
   content: SiteContent;
-  updateHomeContent: (key: keyof SiteContent['home'], value: any) => void;
-  addCustomSection: (section: CustomSection) => void;
-  removeCustomSection: (id: string) => void;
-  updateImage: (key: string, url: string) => void;
+  updateHomeContent: (key: keyof SiteContent['home'], value: any) => Promise<void>;
+  addCustomSection: (section: CustomSection) => Promise<void>;
+  removeCustomSection: (id: string) => Promise<void>;
+  updateImage: (key: string, url: string) => Promise<void>;
   uploadToGallery: (file: File) => Promise<void>;
   removeFromGallery: (url: string) => Promise<void>;
   logVisit: (path: string) => Promise<void>;
@@ -88,9 +88,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return localStorage.getItem('tara_admin_pw') || '987654321';
   });
 
-  // Fetch Firebase Images on Mount
+  // 1. INITIALIZE & LOAD CONFIG
   useEffect(() => {
-    const fetchGallery = async () => {
+    const initSite = async () => {
       // Guard: If storage is null (keys missing), stop here to prevent crash
       if (!storage) {
         setIsStorageConfigured(false);
@@ -99,6 +99,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setIsStorageConfigured(true);
 
+      // A. Load Gallery Images
       try {
         const listRef = ref(storage, 'gallery/');
         const res = await listAll(listRef);
@@ -112,45 +113,96 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
           gallery: [...systemGallery, ...urls]
         }));
       } catch (error) {
-        console.error("Error fetching gallery:", error);
+        console.warn("Gallery fetch warning:", error);
+      }
+
+      // B. Load Site Configuration (Logo, Text, etc.)
+      try {
+        const configRef = ref(storage, 'config/site_config.json');
+        const url = await getDownloadURL(configRef);
+        const response = await fetch(url);
+        if (response.ok) {
+            const savedConfig = await response.json();
+            console.log("Loaded Saved Config:", savedConfig);
+            setContent(prev => ({
+                ...prev,
+                ...savedConfig,
+                // Ensure gallery is not overwritten by the config file (it comes from bucket list)
+                gallery: prev.gallery 
+            }));
+        }
+      } catch (error: any) {
+        if (error.code !== 'storage/object-not-found') {
+            console.warn("Config fetch warning:", error);
+        }
       }
     };
 
-    fetchGallery();
+    initSite();
   }, []);
 
-  const updateHomeContent = (key: keyof SiteContent['home'], value: any) => {
-    setContent(prev => ({
-      ...prev,
-      home: {
-        ...prev.home,
-        [key]: value
-      }
-    }));
+  // 2. SAVE CONFIGURATION TO FIREBASE
+  const saveSiteConfig = async (newContent: SiteContent) => {
+    if (!storage) return;
+
+    try {
+       await ensureAuth();
+       const configRef = ref(storage, 'config/site_config.json');
+       
+       // Create a clean copy to save (exclude the dynamic gallery list)
+       const { gallery, ...configToSave } = newContent;
+       
+       await uploadString(configRef, JSON.stringify(configToSave), 'raw', {
+           contentType: 'application/json'
+       });
+       console.log("Configuration Saved Successfully");
+    } catch (error) {
+       console.error("Failed to save configuration:", error);
+    }
   };
 
-  const addCustomSection = (section: CustomSection) => {
-    setContent(prev => ({
-      ...prev,
-      customSections: [...prev.customSections, section]
-    }));
+  const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
+    setContent(prev => {
+      const next = {
+        ...prev,
+        home: { ...prev.home, [key]: value }
+      };
+      saveSiteConfig(next);
+      return next;
+    });
   };
 
-  const removeCustomSection = (id: string) => {
-    setContent(prev => ({
-      ...prev,
-      customSections: prev.customSections.filter(s => s.id !== id)
-    }));
+  const addCustomSection = async (section: CustomSection) => {
+    setContent(prev => {
+      const next = {
+        ...prev,
+        customSections: [...prev.customSections, section]
+      };
+      saveSiteConfig(next);
+      return next;
+    });
   };
 
-  const updateImage = (key: string, url: string) => {
-    setContent(prev => ({
-      ...prev,
-      images: {
-        ...prev.images,
-        [key]: url
-      }
-    }));
+  const removeCustomSection = async (id: string) => {
+    setContent(prev => {
+      const next = {
+        ...prev,
+        customSections: prev.customSections.filter(s => s.id !== id)
+      };
+      saveSiteConfig(next);
+      return next;
+    });
+  };
+
+  const updateImage = async (key: string, url: string) => {
+    setContent(prev => {
+      const next = {
+        ...prev,
+        images: { ...prev.images, [key]: url }
+      };
+      saveSiteConfig(next);
+      return next;
+    });
   };
 
   // Upload to Firebase Storage with Timeout prevention
@@ -160,10 +212,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error("No storage connection");
     }
 
-    console.log("Attempting upload to Bucket:", storage.app.options.storageBucket);
-
     // CRITICAL: Ensure we are authenticated (Anonymous) before upload
-    // This solves the "Permission Denied" if rules require auth
     try {
         await ensureAuth();
     } catch(e) {
