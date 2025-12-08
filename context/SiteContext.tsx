@@ -82,6 +82,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const initSite = useCallback(async () => {
     if (!storage) {
+      console.warn("☁️ SITE CONTEXT: Storage not available.");
       setIsInitialized(true);
       return;
     }
@@ -91,7 +92,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const configRef = ref(storage, 'config/site_config.json');
       const baseUrl = await getDownloadURL(configRef);
 
-      // Force cache-busting on the JSON file fetch
+      // FORCE CACHE BUSTING: Ensures fresh config on every load globally
       const separator = baseUrl.includes('?') ? '&' : '?';
       const freshUrl = `${baseUrl}${separator}t=${Date.now()}`;
 
@@ -99,26 +100,23 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (response.ok) {
         const cloudConfig = await response.json();
 
-        setContent(prev => {
-          // Verify cloud config actually exists and is valid
-          if (!cloudConfig || !cloudConfig.images) return prev;
-          
-          return {
-            ...prev,
-            ...cloudConfig,
-            // Deep merge images to prevent logic drift
-            images: {
-              ...prev.images,
-              ...cloudConfig.images
-            },
-            // Gallery is managed independently via the listAll check
-            gallery: prev.gallery
-          };
-        });
-        console.log("☁️ SITE CONTEXT: Authoritative cloud config hydrated.");
+        if (cloudConfig && cloudConfig.images) {
+           setContent(prev => ({
+             ...prev,
+             ...cloudConfig,
+             // Authoritative merge of image placeholders
+             images: {
+               ...prev.images,
+               ...cloudConfig.images
+             },
+             // Keep current gallery which we fetch separately below
+             gallery: prev.gallery
+           }));
+           console.log("☁️ SITE CONTEXT: Global configuration hydrated from Firebase.");
+        }
       }
     } catch (err) {
-      console.warn("☁️ SITE CONTEXT: Config fetch failed. Falling back to defaults.");
+      console.log("☁️ SITE CONTEXT: Falling back to default configuration.");
     }
 
     // List all files in gallery folder for the media selector
@@ -149,9 +147,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         contentType: 'application/json',
         cacheControl: 'no-cache, no-store, must-revalidate'
       });
-      console.log("☁️ SITE CONTEXT: Auth version saved to cloud storage.");
+      console.log("☁️ SITE CONTEXT: Global changes pushed to Firebase.");
     } catch (e) {
-      console.error("☁️ SITE CONTEXT: Save error", e);
+      console.error("☁️ SITE CONTEXT: Cloud save broadcast failed.", e);
     }
   }, []);
 
@@ -192,16 +190,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
-    // 1. Attach a query param to the Firebase URL itself before storing it.
-    // This forces all browsers fetching THIS config to refresh the binary.
-    const bustedUrl = url.includes('?') ? `${url}&v=${Date.now()}` : `${url}?v=${Date.now()}`;
-
     setContent(prev => {
       const updated = { 
         ...prev, 
         images: { 
           ...prev.images, 
-          [key]: bustedUrl 
+          [key]: url 
         }, 
         updatedAt: Date.now() 
       };
@@ -228,7 +222,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      if (!storage) return;
      try {
        await ensureAuth();
-       // If URL is from current storage, delete the object
        if (url.includes('firebasestorage.googleapis.com')) {
           const r = ref(storage, url);
           await deleteObject(r);
