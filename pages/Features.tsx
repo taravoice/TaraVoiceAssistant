@@ -70,45 +70,57 @@ const Features: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="space-y-24">
-          {featureList.map((feature, index) => (
-            <div key={feature.id} className={`flex flex-col ${index % 2 === 0 ? 'lg:flex-row' : 'lg:flex-row-reverse'} items-center gap-12`}>
-              <div className="lg:w-1/2 space-y-6">
-                <div className="w-14 h-14 bg-[#0097b2]/10 rounded-2xl flex items-center justify-center text-[#0097b2]">
-                  <feature.icon className="w-7 h-7" />
+          {featureList.map((feature, index) => {
+            const currentImg = getBustedUrl(feature.img);
+            return (
+              <div key={feature.id} className={`flex flex-col ${index % 2 === 0 ? 'lg:flex-row' : 'lg:flex-row-reverse'} items-center gap-12`}>
+                <div className="lg:w-1/2 space-y-6">
+                  <div className="w-14 h-14 bg-[#0097b2]/10 rounded-2xl flex items-center justify-center text-[#0097b2]">
+                    <feature.icon className="w-7 h-7" />
+                  </div>
+                  <h2 className="text-3xl font-bold text-slate-900">{feature.title}</h2>
+                  <p className="text-lg text-slate-600 leading-relaxed">{feature.desc}</p>
                 </div>
-                <h2 className="text-3xl font-bold text-slate-900">{feature.title}</h2>
-                <p className="text-lg text-slate-600 leading-relaxed">{feature.desc}</p>
-              </div>
-              <div className="lg:w-1/2">
-                <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-slate-200 group">
-                  <div className="absolute inset-0 bg-[#0097b2]/10 group-hover:bg-transparent transition-colors duration-500"></div>
-                  <img 
-                    src={getBustedUrl(feature.img)} 
-                    alt={feature.title} 
-                    className="w-full h-auto transform group-hover:scale-105 transition-transform duration-700"
-                  />
+                <div className="lg:w-1/2">
+                  <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-slate-200 group">
+                    <div className="absolute inset-0 bg-[#0097b2]/10 group-hover:bg-transparent transition-colors duration-500"></div>
+                    <img 
+                      key={currentImg}
+                      src={currentImg} 
+                      alt={feature.title} 
+                      className="w-full h-auto transform group-hover:scale-105 transition-transform duration-700 object-cover"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Custom Sections */}
-        {customSections.map((section) => (
-          <div key={section.id} className="py-20">
-              <div className="grid md:grid-cols-2 gap-12 items-center">
-                  <div className="order-2 md:order-1">
-                    <h2 className="text-3xl font-bold text-slate-900 mb-6">{section.title}</h2>
-                    <p className="text-lg text-slate-600 leading-relaxed whitespace-pre-wrap">{section.content}</p>
-                  </div>
-                  {section.image && (
-                    <div className="order-1 md:order-2">
-                      <img src={getBustedUrl(section.image)} alt={section.title} className="rounded-2xl shadow-lg w-full h-auto object-cover" />
+        {customSections.map((section) => {
+          const sectionImg = getBustedUrl(section.image || '');
+          return (
+            <div key={section.id} className="py-20">
+                <div className="grid md:grid-cols-2 gap-12 items-center">
+                    <div className="order-2 md:order-1">
+                      <h2 className="text-3xl font-bold text-slate-900 mb-6">{section.title}</h2>
+                      <p className="text-lg text-slate-600 leading-relaxed whitespace-pre-wrap">{section.content}</p>
                     </div>
-                  )}
-              </div>
-          </div>
-        ))}
+                    {section.image && (
+                      <div className="order-1 md:order-2">
+                        <img 
+                          key={sectionImg}
+                          src={sectionImg} 
+                          alt={section.title} 
+                          className="rounded-2xl shadow-lg w-full h-auto object-cover" 
+                        />
+                      </div>
+                    )}
+                </div>
+            </div>
+          );
+        })}
 
         <div className="mt-24 text-center bg-[#0097b2]/10 rounded-3xl p-12">
           <h2 className="text-2xl font-bold text-slate-900 mb-6">Ready to upgrade your customer experience?</h2>
