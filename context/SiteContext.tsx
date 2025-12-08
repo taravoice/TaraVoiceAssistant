@@ -25,7 +25,7 @@ interface SiteContent {
   customSections: CustomSection[];
   images: SiteImages;
   gallery: string[]; 
-  updatedAt: number; // Added for sync tracking
+  updatedAt: number;
 }
 
 interface SiteContextType {
@@ -42,10 +42,12 @@ interface SiteContextType {
   login: (password: string) => boolean;
   logout: () => void;
   changePassword: (newPassword: string) => void;
+  isInitialized: boolean;
 }
 
+//AUTHORITATIVE FALLBACKS: High quality Unsplash images, NO local / logo dependencies.
 const defaultImages: SiteImages = {
-  logo: '/logo-default.png',
+  logo: 'https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?q=80&w=200&auto=format&fit=crop', // A generic professional placeholder
   homeHeroBg: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop',
   homeIndustry1: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?q=80&w=800&auto=format&fit=crop',
   homeIndustry2: 'https://images.unsplash.com/photo-1600948836101-f9ffda59d250?q=80&w=800&auto=format&fit=crop',
@@ -64,9 +66,9 @@ const systemGallery = [
 const defaultContent: SiteContent = {
   home: {
     heroTitle: "AI Appointment Setter for Your Business",
-    heroSubtitle: "Automate your appointment scheduling and handle customer interactions 24/7 with human-like accuracy. Never miss a lead again.",
+    heroSubtitle: "Automate your appointment scheduling and handle customer interactions 24/7 with human-like accuracy.",
     aboutTitle: "About Tara Voice Assistant",
-    aboutText: "Tara Voice Assistant is a cutting-edge AI-driven solution designed to empower small and medium-sized businesses with the tools they need to streamline customer interactions.",
+    aboutText: "Tara Voice Assistant is a cutting-edge AI-driven solution designed to empower small and medium-sized businesses.",
   },
   customSections: [],
   images: defaultImages,
@@ -80,6 +82,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [content, setContent] = useState<SiteContent>(defaultContent);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isStorageConfigured, setIsStorageConfigured] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   
   const [adminPassword, setAdminPassword] = useState(() => {
     return localStorage.getItem('tara_admin_pw') || '987654321';
@@ -87,131 +90,105 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const initSite = async () => {
-      // 1. Check LocalStorage for instant paint (Old user/Cache)
-      let localTimestamp = 0;
-      const cached = localStorage.getItem('tara_site_config');
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          localTimestamp = parsed.updatedAt || 0;
-          setContent(prev => ({ ...prev, ...parsed }));
-        } catch (e) {}
+      // 1. Check Local Sync for UI speed
+      const local = localStorage.getItem('tara_site_config');
+      if (local) {
+        try { setContent(prev => ({ ...prev, ...JSON.parse(local) })); } catch (e) {}
       }
 
       if (!storage) {
         setIsStorageConfigured(false);
+        setIsInitialized(true);
         return;
       }
       setIsStorageConfigured(true);
 
-      // 2. Fetch from Cloud (Absolute Truth)
+      // 2. AUTHORITATIVE CLOUD HYDRATION: Mirroring the Firebase config to ALL browsers
       try {
         const configRef = ref(storage, 'config/site_config.json');
         const downloadUrl = await getDownloadURL(configRef);
         
-        // Clear browser cache for this JSON fetch specifically
-        const separator = downloadUrl.includes('?') ? '&' : '?';
-        const finalUrl = `${downloadUrl}${separator}nocache=${Date.now()}`;
+        // Anti-Cache String to force cloud fetch
+        const sep = downloadUrl.includes('?') ? '&' : '?';
+        const freshUrl = `${downloadUrl}${sep}t=${Date.now()}`;
         
-        const response = await fetch(finalUrl);
+        const response = await fetch(freshUrl);
         if (response.ok) {
           const cloudConfig = await response.json();
-          const cloudTimestamp = cloudConfig.updatedAt || 0;
-
-          // Only apply if cloud data is newer or local storage is empty
-          if (cloudTimestamp > localTimestamp || localTimestamp === 0) {
-            console.log(`☁️ SITE CONTEXT: Cloud sync initiated. (Cloud: ${cloudTimestamp} > Local: ${localTimestamp})`);
-            
-            setContent(prev => {
-              const updated = { 
-                ...prev, 
-                ...cloudConfig,
-                gallery: prev.gallery // Memory gallery items are local to session
-              };
-              // Persist cloud truth to local storage for this device
-              localStorage.setItem('tara_site_config', JSON.stringify(updated));
-              return updated;
-            });
-          } else {
-            console.log("☁️ SITE CONTEXT: Local state is already up-to-date with cloud.");
-          }
+          console.log("☁️ SiteContext: Cloud sync starting...");
+          
+          setContent(prev => {
+            const merged = { ...prev, ...cloudConfig, updatedAt: cloudConfig.updatedAt || Date.now() };
+            localStorage.setItem('tara_site_config', JSON.stringify(merged));
+            return merged;
+          });
+          console.log("☁️ SiteContext: Global Auth Config loaded for current browser.");
         }
-      } catch (error: any) {
-        if (error.code === 'storage/object-not-found') {
-          console.info("☁️ SITE CONTEXT: No existing cloud configuration found.");
-        } else {
-          console.error("☁️ SITE CONTEXT: Cloud sync failure:", error.message);
+      } catch (err: any) {
+        if (err.code !== 'storage/object-not-found') {
+          console.warn("☁️ SiteContext: Storage rules might be blocking config read.", err.message);
         }
+      } finally {
+        setIsInitialized(true);
       }
 
-      // 3. Sync Image Library for current user
+      // 3. Sync Image Gallery
       try {
         const galleryListRef = ref(storage, 'gallery/');
         const res = await listAll(galleryListRef);
-        const urls = await Promise.all(
-          res.items.map((itemRef: any) => getDownloadURL(itemRef))
-        );
-        setContent(prev => ({ 
-          ...prev, 
-          gallery: [...systemGallery, ...urls] 
-        }));
+        const urls = await Promise.all(res.items.map((r: any) => getDownloadURL(r)));
+        setContent(prev => ({ ...prev, gallery: [...systemGallery, ...urls] }));
       } catch (e) {}
     };
     initSite();
   }, []);
 
-  const persistToCloud = async (newContent: SiteContent) => {
-    // Inject current timestamp to force cross-browser sync detection
-    const timestampedContent = { ...newContent, updatedAt: Date.now() };
-
-    // 1. Update Local State & Storage
-    setContent(timestampedContent);
-    localStorage.setItem('tara_site_config', JSON.stringify(timestampedContent));
+  const saveToCloud = async (newContent: SiteContent) => {
+    const payload = { ...newContent, updatedAt: Date.now() };
     
-    // 2. Upload JSON to Cloud
+    // UI Local Persistence
+    setContent(payload);
+    localStorage.setItem('tara_site_config', JSON.stringify(payload));
+    
     if (!storage) return;
     try {
-       await ensureAuth();
-       const configRef = ref(storage, 'config/site_config.json');
-       const { gallery, ...saveData } = timestampedContent;
-       await uploadString(configRef, JSON.stringify(saveData), 'raw', {
-           contentType: 'application/json'
-       });
-       console.log("🚀 SITE CONTEXT: Changes synced to Cloud. Global users will update on next visit.");
-    } catch (error) {
-       console.error("🚀 SITE CONTEXT: Cloud persist failure.", error);
+      await ensureAuth();
+      const configRef = ref(storage, 'config/site_config.json');
+      const { gallery, ...saveData } = payload;
+      await uploadString(configRef, JSON.stringify(saveData), 'raw', { contentType: 'application/json' });
+      console.log("🚀 SiteContext: Cloud broadcast successful.");
+    } catch (e) {
+      console.error("🚀 SiteContext: Broadcast failed.", e);
     }
   };
 
   const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
-    const newContent = { ...content, home: { ...content.home, [key]: value } };
-    await persistToCloud(newContent);
+    await saveToCloud({ ...content, home: { ...content.home, [key]: value } });
   };
 
   const addCustomSection = async (section: CustomSection) => {
-    const newContent = { ...content, customSections: [...content.customSections, section] };
-    await persistToCloud(newContent);
+    await saveToCloud({ ...content, customSections: [...content.customSections, section] });
   };
 
   const removeCustomSection = async (id: string) => {
-    const newContent = { ...content, customSections: content.customSections.filter(s => s.id !== id) };
-    await persistToCloud(newContent);
+    await saveToCloud({ ...content, customSections: content.customSections.filter(s => s.id !== id) });
   };
 
   const updateImage = async (key: string, url: string) => {
-    const newContent = { ...content, images: { ...content.images, [key]: url } };
-    await persistToCloud(newContent);
+    console.log(`SiteContext: Remapping image '${key}' -> ${url}`);
+    await saveToCloud({ ...content, images: { ...content.images, [key]: url } });
   };
 
   const uploadToGallery = async (file: File): Promise<void> => {
-    if (!storage) throw new Error("Storage unreachable.");
+    if (!storage) throw new Error("Connection failed.");
     try {
       await ensureAuth();
-      const storageRef = ref(storage, `gallery/${Date.now()}_${file.name}`);
-      const { uploadBytes: fbUpload } = await import('firebase/storage');
-      const snapshot = await fbUpload(storageRef, file);
-      const downloadURL = await getDownloadURL(snapshot.ref);
-      setContent(prev => ({ ...prev, gallery: [downloadURL, ...prev.gallery] }));
+      const path = `gallery/${Date.now()}_${file.name}`;
+      const storageRef = ref(storage, path);
+      const { uploadBytes } = await import('firebase/storage');
+      const snap = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snap.ref);
+      setContent(prev => ({ ...prev, gallery: [url, ...prev.gallery] }));
     } catch (e) { throw e; }
   };
 
@@ -220,15 +197,15 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      try {
        await ensureAuth();
        if (url.includes('firebasestorage.googleapis.com')) {
-         const storageRef = ref(storage, url);
-         await deleteObject(storageRef);
+         const r = ref(storage, url);
+         await deleteObject(r);
        }
-       setContent(prev => ({ ...prev, gallery: prev.gallery.filter(item => item !== url) }));
+       setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
      } catch (e) {}
   };
 
-  const login = (passwordInput: string) => {
-    if (passwordInput === adminPassword) {
+  const login = (input: string) => {
+    if (input === adminPassword) {
       setIsAuthenticated(true);
       return true;
     }
@@ -237,26 +214,26 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => setIsAuthenticated(false);
 
-  const changePassword = (newPassword: string) => {
-    setAdminPassword(newPassword);
-    localStorage.setItem('tara_admin_pw', newPassword);
+  const changePassword = (pw: string) => {
+    setAdminPassword(pw);
+    localStorage.setItem('tara_admin_pw', pw);
   };
 
   const logVisit = async (path: string) => {
     if (!storage || path.startsWith('/admin')) return;
     try {
       await ensureAuth();
-      let sessionId = sessionStorage.getItem('tara_session_id') || Math.random().toString(36).substring(2);
-      sessionStorage.setItem('tara_session_id', sessionId);
-      const logData = { path, timestamp: Date.now(), sessionId, userAgent: navigator.userAgent };
-      const logRef = ref(storage, `analytics/logs/${Date.now()}_${Math.random().toString(36).substr(2, 5)}.json`);
-      await uploadString(logRef, JSON.stringify(logData), 'raw', { contentType: 'application/json' });
-    } catch (err) {}
+      const sid = sessionStorage.getItem('t_sid') || Math.random().toString(36).substring(2);
+      sessionStorage.setItem('t_sid', sid);
+      const data = { path, timestamp: Date.now(), sid, ua: navigator.userAgent };
+      const logRef = ref(storage, `analytics/logs/${Date.now()}.json`);
+      await uploadString(logRef, JSON.stringify(data), 'raw', { contentType: 'application/json' });
+    } catch (e) {}
   };
 
   return (
     <SiteContext.Provider value={{ 
-      content, updateHomeContent, addCustomSection, removeCustomSection, updateImage, uploadToGallery, removeFromGallery, logVisit, isAuthenticated, isStorageConfigured, login, logout, changePassword
+      content, updateHomeContent, addCustomSection, removeCustomSection, updateImage, uploadToGallery, removeFromGallery, logVisit, isAuthenticated, isStorageConfigured, login, logout, changePassword, isInitialized
     }}>
       {children}
     </SiteContext.Provider>
@@ -265,6 +242,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useSite = () => {
   const context = useContext(SiteContext);
-  if (!context) throw new Error('useSite error');
+  if (!context) throw new Error('Context error');
   return context;
 };
