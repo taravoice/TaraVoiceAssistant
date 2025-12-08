@@ -44,7 +44,6 @@ interface SiteContextType {
   isInitialized: boolean;
 }
 
-// Authoritative Default: No local file fallbacks to prevent cross-browser sync confusion
 const defaultImages: SiteImages = {
   logo: 'https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?q=80&w=200&auto=format&fit=crop',
   homeHeroBg: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop',
@@ -93,22 +92,23 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const configRef = ref(storage, 'config/site_config.json');
         const baseUrl = await getDownloadURL(configRef);
         
-        // Force Cache Busting on fetch so every browser gets the live update
+        // Force Cache Busting on fetch with proper separator detection
         const separator = baseUrl.includes('?') ? '&' : '?';
         const freshUrl = `${baseUrl}${separator}t=${Date.now()}`;
-        const response = await fetch(freshUrl);
         
+        const response = await fetch(freshUrl);
         if (response.ok) {
           const cloudConfig = await response.json();
+          // Authority Logic: Cloud config spreads over local memory
           setContent(prev => ({
             ...prev,
             ...cloudConfig,
             updatedAt: cloudConfig.updatedAt || Date.now()
           }));
-          console.log("☁️ SITE CONTEXT: GLOBAL SYNC SUCCESSFUL.");
+          console.log("☁️ SITE CONTEXT: GLOBAL SYNC SUCCESSFUL (Cloud data active).");
         }
       } catch (err) {
-        console.warn("☁️ SITE CONTEXT: Using local fallback defaults.");
+        console.warn("☁️ SITE CONTEXT: Config file missing or permission denied. Using internal defaults.");
       } finally {
         setIsInitialized(true);
       }
@@ -128,9 +128,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const now = Date.now();
     const contentToApply = { ...newContent, updatedAt: now };
     
-    // Update local state instantly for the current user
+    // ATOMIC Update: update state locally first for instant UI response
     setContent(contentToApply);
-    localStorage.setItem('tara_site_config', JSON.stringify(contentToApply));
     
     if (!storage) return;
     try {
@@ -138,9 +137,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const configRef = ref(storage, 'config/site_config.json');
       const { gallery, ...saveData } = contentToApply;
       await uploadString(configRef, JSON.stringify(saveData), 'raw', { contentType: 'application/json' });
-      console.log("☁️ SITE CONTEXT: Configuration broadcasted to cloud.");
+      console.log("☁️ SITE CONTEXT: New image mappings saved to cloud database.");
     } catch (e) {
-      console.error("☁️ SITE CONTEXT: broadcast failed.", e);
+      console.error("☁️ SITE CONTEXT: Network error saving configuration.", e);
     }
   };
 
@@ -223,6 +222,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useSite = () => {
   const context = useContext(SiteContext);
-  if (!context) throw new Error('Context error');
+  if (!context) throw new Error('Context not provider');
   return context;
 };
