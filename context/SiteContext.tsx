@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { storage, ensureAuth } from '../firebase';
 import { ref, getDownloadURL, listAll, deleteObject, uploadString } from 'firebase/storage';
@@ -24,7 +23,7 @@ interface SiteContent {
   };
   customSections: CustomSection[];
   images: SiteImages;
-  gallery: string[]; 
+  gallery: string[];
   updatedAt: number;
 }
 
@@ -89,23 +88,30 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       setIsStorageConfigured(true);
 
-      // Autoritative Cloud Load
+      // Load authoritative cloud config
       try {
         const configRef = ref(storage, 'config/site_config.json');
         const baseUrl = await getDownloadURL(configRef);
-        
-        // Accurate Cache Busting logic
+
+        // Strong cache busting for JSON
         const separator = baseUrl.includes('?') ? '&' : '?';
         const freshUrl = `${baseUrl}${separator}t=${Date.now()}`;
-        
+
         const response = await fetch(freshUrl);
         if (response.ok) {
           const cloudConfig = await response.json();
+
+          // Prevent overwriting updated images
           setContent(prev => ({
             ...prev,
             ...cloudConfig,
-            gallery: prev.gallery // Retain current gallery list
+            images: {
+              ...prev.images,
+              ...(cloudConfig.images || {})
+            },
+            gallery: prev.gallery
           }));
+
           console.log("☁️ SITE CONTEXT: Authoritative cloud config loaded.");
         }
       } catch (err) {
@@ -114,7 +120,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsInitialized(true);
       }
 
-      // Load Gallery
+      // Load gallery images
       try {
         const galleryListRef = ref(storage, 'gallery/');
         const res = await listAll(galleryListRef);
@@ -122,16 +128,24 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setContent(prev => ({ ...prev, gallery: urls }));
       } catch (e) {}
     };
+
     initSite();
   }, []);
 
+  // Save config with no-cache header
   const saveToCloud = useCallback(async (newContent: SiteContent) => {
     if (!storage) return;
     try {
       await ensureAuth();
+
       const configRef = ref(storage, 'config/site_config.json');
       const { gallery, ...saveData } = newContent;
-      await uploadString(configRef, JSON.stringify(saveData), 'raw', { contentType: 'application/json' });
+
+      await uploadString(configRef, JSON.stringify(saveData), 'raw', {
+        contentType: 'application/json',
+        cacheControl: 'no-cache, no-store, must-revalidate'
+      });
+
       console.log("☁️ SITE CONTEXT: Saved to cloud.");
     } catch (e) {
       console.error("☁️ SITE CONTEXT: Cloud save failed.", e);
@@ -140,7 +154,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
     setContent(prev => {
-      const updated = { ...prev, home: { ...prev.home, [key]: value }, updatedAt: Date.now() };
+      const updated = { 
+        ...prev, 
+        home: { ...prev.home, [key]: value }, 
+        updatedAt: Date.now() 
+      };
       saveToCloud(updated);
       return updated;
     });
@@ -148,7 +166,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addCustomSection = async (section: CustomSection) => {
     setContent(prev => {
-      const updated = { ...prev, customSections: [...prev.customSections, section], updatedAt: Date.now() };
+      const updated = { 
+        ...prev, 
+        customSections: [...prev.customSections, section], 
+        updatedAt: Date.now() 
+      };
       saveToCloud(updated);
       return updated;
     });
@@ -156,17 +178,30 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const removeCustomSection = async (id: string) => {
     setContent(prev => {
-      const updated = { ...prev, customSections: prev.customSections.filter(s => s.id !== id), updatedAt: Date.now() };
+      const updated = { 
+        ...prev, 
+        customSections: prev.customSections.filter(s => s.id !== id), 
+        updatedAt: Date.now() 
+      };
       saveToCloud(updated);
       return updated;
     });
   };
 
+  // Updated: immediately apply cache-busted URL for instant refresh
   const updateImage = async (key: string, url: string) => {
-    // 1. Update state INSTANTLY for immediate binary refresh
+    const freshUrl = `${url}?v=${Date.now()}`;
+
     setContent(prev => {
-      const updated = { ...prev, images: { ...prev.images, [key]: url }, updatedAt: Date.now() };
-      // 2. Persist in background
+      const updated = { 
+        ...prev, 
+        images: { 
+          ...prev.images, 
+          [key]: freshUrl 
+        }, 
+        updatedAt: Date.now() 
+      };
+
       saveToCloud(updated);
       return updated;
     });
@@ -181,6 +216,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { uploadBytes } = await import('firebase/storage');
       const snap = await uploadBytes(storageRef, file);
       const url = await getDownloadURL(snap.ref);
+
       setContent(prev => ({ ...prev, gallery: [url, ...prev.gallery] }));
     } catch (e) { throw e; }
   };
@@ -225,7 +261,20 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <SiteContext.Provider value={{ 
-      content, updateHomeContent, addCustomSection, removeCustomSection, updateImage, uploadToGallery, removeFromGallery, logVisit, isAuthenticated, isStorageConfigured, login, logout, changePassword, isInitialized
+      content, 
+      updateHomeContent, 
+      addCustomSection, 
+      removeCustomSection, 
+      updateImage, 
+      uploadToGallery, 
+      removeFromGallery, 
+      logVisit, 
+      isAuthenticated, 
+      isStorageConfigured, 
+      login, 
+      logout, 
+      changePassword,
+      isInitialized
     }}>
       {children}
     </SiteContext.Provider>
