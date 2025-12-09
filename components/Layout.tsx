@@ -21,8 +21,18 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     return location.pathname === path ? 'text-[#0097b2] font-semibold' : 'text-slate-600 hover:text-[#0097b2]';
   };
 
-  // Binary Cache Buster
-  const logoUrl = `${content.images.logo}${content.images.logo.includes('?') ? '&' : '?'}t=${content.updatedAt}`;
+  // Safe logo construction with dynamic fallback
+  const getLogoUrl = () => {
+    const rawUrl = content.images.logo || '/logo.png';
+    if (!rawUrl || rawUrl === '') return '/logo.png';
+    // Only bust cache for external (Firebase) URLs
+    if (rawUrl.startsWith('http')) {
+       return `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}t=${content.updatedAt}`;
+    }
+    return rawUrl;
+  };
+
+  const finalLogoUrl = getLogoUrl();
 
   return (
     <div className="min-h-screen flex flex-col bg-[#d9d9d9] font-sans text-slate-900">
@@ -31,9 +41,15 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div className="flex justify-between items-center h-20">
             <Link to="/" className="flex items-center group">
               <img 
-                src={logoUrl} 
+                key={finalLogoUrl}
+                src={finalLogoUrl} 
                 alt="Tara Voice Assistant" 
-                className="h-12 w-auto object-contain" 
+                className="h-12 w-auto object-contain transition-all duration-300"
+                onError={(e) => {
+                   // Fallback if the sync URL is broken
+                   const img = e.target as HTMLImageElement;
+                   if (img.src !== '/logo.png') img.src = '/logo.png';
+                }}
               />
             </Link>
 
