@@ -8,8 +8,11 @@ const Home: React.FC = () => {
   const { content } = useSite();
 
   const getBustedUrl = (url: string) => {
-    if (!url) return '';
-    return `${url}${url.includes('?') ? '&' : '?'}t=${content.updatedAt}`;
+    if (!url || url === '') return '';
+    if (url.startsWith('http')) {
+      return `${url}${url.includes('?') ? '&' : '?'}t=${content.updatedAt}`;
+    }
+    return url;
   };
 
   const customSections = content.customSections.filter(s => s.page === 'Home');
@@ -19,7 +22,7 @@ const Home: React.FC = () => {
       {/* Hero Section */}
       <section className="relative bg-[#d9d9d9] overflow-hidden">
         <div 
-          key={getBustedUrl(content.images.homeHeroBg)} /* Force re-render if bg changes */
+          key={getBustedUrl(content.images.homeHeroBg)} 
           className="absolute inset-0 bg-cover bg-center opacity-5 transition-all duration-500"
           style={{ backgroundImage: `url('${getBustedUrl(content.images.homeHeroBg)}')` }}
         ></div>
@@ -51,7 +54,6 @@ const Home: React.FC = () => {
             </div>
             <div className="relative">
                <div className="absolute -inset-4 bg-gradient-to-r from-[#0097b2] to-[#007f96] rounded-2xl blur-lg opacity-30 animate-pulse"></div>
-               {/* 16:9 Aspect Ratio Container using padding hack for maximum compatibility */}
                <div className="relative w-full rounded-2xl shadow-2xl border border-white/20 overflow-hidden bg-black" style={{ paddingBottom: '56.25%' }}>
                  <iframe 
                    className="absolute top-0 left-0 w-full h-full"
@@ -79,7 +81,7 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* Dynamically Added Custom Sections */}
+      {/* Custom Sections */}
       {customSections.map((section) => (
         <section key={section.id} className="py-20 bg-white">
            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -140,7 +142,7 @@ const Home: React.FC = () => {
                  {['Healthcare Providers', 'Salons & Spas', 'Home Services', 'Fitness Centers', 'Service-based SMBs'].map((item, i) => (
                    <li key={i} className="flex items-center space-x-3 text-lg font-medium">
                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0097b2] flex items-center justify-center">
-                       <CheckCircle2 className="w-4 h-4 text-[#0097b2]" />
+                       <CheckCircle2 className="w-4 h-4 text-white" />
                      </span>
                      <span>{item}</span>
                    </li>
@@ -151,13 +153,13 @@ const Home: React.FC = () => {
                 <img 
                   key={getBustedUrl(content.images.homeIndustry1)}
                   src={getBustedUrl(content.images.homeIndustry1)} 
-                  className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity w-full object-cover" 
+                  className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity w-full h-48 object-cover" 
                   alt="Healthcare" 
                 />
                 <img 
                   key={getBustedUrl(content.images.homeIndustry2)}
                   src={getBustedUrl(content.images.homeIndustry2)} 
-                  className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity mt-8 w-full object-cover" 
+                  className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity mt-8 w-full h-48 object-cover" 
                   alt="Salon" 
                 />
              </div>
@@ -174,9 +176,7 @@ const Home: React.FC = () => {
           </div>
           
           <div className="relative">
-             {/* Connector Line (Desktop) */}
              <div className="hidden md:block absolute top-1/2 left-0 w-full h-0.5 bg-slate-300 -z-10 transform -translate-y-1/2"></div>
-             
              <div className="grid md:grid-cols-3 gap-8">
                <div className="bg-white p-6 rounded-xl border-2 border-slate-200 text-center relative">
                  <div className="w-16 h-16 mx-auto bg-white border-4 border-[#0097b2]/20 rounded-full flex items-center justify-center text-[#0097b2] mb-4 z-10">
@@ -241,8 +241,8 @@ const Home: React.FC = () => {
       </section>
 
       {/* CTA */}
-      <section className="py-20 bg-gradient-to-br from-[#0097b2] to-[#007f96] text-white">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <section className="py-20 bg-gradient-to-br from-[#0097b2] to-[#007f96] text-white text-center">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
            <h2 className="text-3xl md:text-5xl font-bold mb-6">Start Automating Your Customer Calls Today</h2>
            <p className="text-xl text-white/90 mb-10 max-w-2xl mx-auto">
              Join hundreds of businesses saving time and growing revenue with Tara Voice Assistant.
