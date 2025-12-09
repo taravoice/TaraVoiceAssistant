@@ -44,18 +44,18 @@ interface SiteContextType {
   isInitialized: boolean;
 }
 
-// EMPTY DEFAULTS: Forces browser to wait for authoritative Cloud Data
+// SMART DEFAULTS: Shown until Admin updates them in Cloud
 const initialImages: SiteImages = {
-  logo: '',
-  homeHeroBg: '',
-  homeIndustry1: '',
-  homeIndustry2: '',
-  feature1: '',
-  feature2: '',
-  feature3: '',
-  feature4: '',
-  feature5: '',
-  feature6: '',
+  logo: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2070&auto=format&fit=crop',
+  homeHeroBg: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=1965&auto=format&fit=crop',
+  homeIndustry1: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=2053&auto=format&fit=crop',
+  homeIndustry2: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=1974&auto=format&fit=crop',
+  feature1: 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?q=80&w=2068&auto=format&fit=crop',
+  feature2: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?q=80&w=1000',
+  feature3: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?q=80&w=2084&auto=format&fit=crop',
+  feature4: 'https://images.unsplash.com/photo-1506784365847-bbad939e9335?q=80&w=2069&auto=format&fit=crop',
+  feature5: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2015&auto=format&fit=crop',
+  feature6: 'https://images.unsplash.com/photo-1531746790731-6c087fecd65a?q=80&w=2006&auto=format&fit=crop',
 };
 
 const initialContent: SiteContent = {
@@ -82,7 +82,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
   const initSite = useCallback(async () => {
-    // 1. Check if we have bucket access
     if (!storage) {
       setIsInitialized(true);
       return;
@@ -93,33 +92,29 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const configRef = ref(storage, 'config/site_config.json');
       const baseUrl = await getDownloadURL(configRef);
       
-      // 2. Authoritative Cache Busting: Ensures every device gets the LATEST mapping
       const separator = baseUrl.includes('?') ? '&' : '?';
       const response = await fetch(`${baseUrl}${separator}t=${Date.now()}`, { 
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' }
+        cache: 'no-store'
       });
       
       if (response.ok) {
         const cloudConfig = await response.json();
         if (cloudConfig) {
           setContent(prev => {
-             // TOTAL OVERRIDE: Prevent local defaults from fighting with the database
              const updated = {
                ...prev,
                ...cloudConfig,
-               images: { ...cloudConfig.images }, // Force exact cloud object
+               images: { ...prev.images, ...cloudConfig.images }, // Authoritative merge
                updatedAt: cloudConfig.updatedAt || prev.updatedAt,
-               gallery: prev.gallery
+               gallery: prev.gallery // Gallery is fetched separately
              };
              localStorage.setItem('tara_site_config', JSON.stringify(updated));
-             console.log("☁️ SITE CONTEXT: Globally Synced Config Applied.");
              return updated;
           });
         }
       }
     } catch (err) {
-      console.warn("☁️ SITE CONTEXT: Cloud config unavailable. Using cached local copy.");
+      console.warn("☁️ SITE CONTEXT: Using cached or default data.");
       const local = localStorage.getItem('tara_site_config');
       if (local) {
         try {
@@ -128,6 +123,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
+    // Always fetch the gallery
     try {
       const galleryListRef = ref(storage, 'gallery/');
       const res = await listAll(galleryListRef);
@@ -152,9 +148,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         contentType: 'application/json',
         cacheControl: 'no-cache, no-store, must-revalidate'
       });
-      console.log("☁️ SITE CONTEXT: Successfully broadcasted changes to the cloud.");
     } catch (e) {
-      console.error("☁️ SITE CONTEXT: Cloud sync failed.", e);
+      console.error("☁️ SITE CONTEXT: Broadcast failed.", e);
     }
   }, []);
 
@@ -292,6 +287,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useSite = () => {
   const context = useContext(SiteContext);
-  if (!context) throw new Error('Site Context is required.');
+  if (!context) throw new Error('Site Context missing.');
   return context;
 };
