@@ -50,18 +50,18 @@ interface SiteContextType {
 }
 
 const initialImages: SiteImages = {
-  logo: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2070&auto=format&fit=crop',
-  homeHeroBg: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=1965&auto=format&fit=crop',
-  homeIndustry1: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=2053&auto=format&fit=crop',
-  homeIndustry2: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=1974&auto=format&fit=crop',
-  feature1: 'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?q=80&w=2068&auto=format&fit=crop',
-  feature2: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?q=80&w=1000',
-  feature3: 'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?q=80&w=2084&auto=format&fit=crop',
-  feature4: 'https://images.unsplash.com/photo-1506784365847-bbad939e9335?q=80&w=2069&auto=format&fit=crop',
-  feature5: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2015&auto=format&fit=crop',
-  feature6: 'https://images.unsplash.com/photo-1531746790731-6c087fecd65a?q=80&w=2006&auto=format&fit=crop',
-  aboutTeam: 'https://images.unsplash.com/photo-1552664730-d307ca884978?q=80&w=2070&auto=format&fit=crop',
-  aboutFuture: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=1965&auto=format&fit=crop',
+  logo: '',
+  homeHeroBg: '',
+  homeIndustry1: '',
+  homeIndustry2: '',
+  feature1: '',
+  feature2: '',
+  feature3: '',
+  feature4: '',
+  feature5: '',
+  feature6: '',
+  aboutTeam: '',
+  aboutFuture: '',
 };
 
 const initialContent: SiteContent = {
@@ -200,10 +200,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const urls = await Promise.all(sortedItems.map(r => getDownloadURL(r)));
       
-      // We don't necessarily need to append ?t= here for the gallery LIST, 
-      // but if we want consistency with uploadToGallery, we can.
-      // However, uploadToGallery adds it to the URL stored in the JSON content.
-      // Here we just display what's in the bucket.
       setContent(prev => ({ ...prev, gallery: urls }));
     } catch (e) {
       // console.warn("Gallery load failed");
@@ -367,8 +363,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let url = await getDownloadURL(snap.ref);
       
       // FORCE CACHE BUSTING IN THE URL stored in JSON
-      // This appends &t=TIMESTAMP to the firebase URL. 
-      // This URL will be saved in 'content.images' when mapped, ensuring users get the "new" link.
       const separator = url.includes('?') ? '&' : '?';
       url = `${url}${separator}t=${Date.now()}`;
 
@@ -382,22 +376,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
        await ensureAuth();
        // Strip query params to get storage ref
        const baseUrl = url.split('?')[0]; 
-       // Firebase storage ref logic needs care with tokens, but generally we can use the full URL 
-       // or if we have the original ref. Here we try to ref from URL.
-       // However, `url` has our extra `&t=` now.
-       // Firebase `ref(storage, url)` handles the full URL including tokens usually.
-       // Let's try passing the full URL, if it fails, we might need to clean it.
-       // Actually, the best way is to not rely on the URL for deletion if possible, 
-       // but here we only have the URL.
-       
-       // NOTE: We try to delete. If it fails due to query params, we might need to clean it.
-       // But typically `ref(storage, https://...)` works.
        const r = ref(storage, url); 
        await deleteObject(r);
        
        setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
      } catch (e) {
-       // If strict delete fails, just remove from local view
        setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
      }
   };
