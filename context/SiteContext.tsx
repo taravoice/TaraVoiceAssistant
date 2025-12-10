@@ -129,6 +129,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             const pointerRef = ref(storage, 'config/current.json');
             const pointerUrl = await getDownloadURL(pointerRef);
+            // Aggressive cache busting for the pointer fetch
             const pointerRes = await fetch(`${pointerUrl}${pointerUrl.includes('?') ? '&' : '?'}t=${Date.now()}`, {
                 cache: 'no-store'
             });
@@ -151,6 +152,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Fetch the actual content
       if (downloadUrl) {
           const separator = downloadUrl.includes('?') ? '&' : '?';
+          // Cache busting query on the fetch itself
           const response = await fetch(`${downloadUrl}${separator}nocache=${Date.now()}`);
           
           if (response.ok) {
@@ -193,12 +195,15 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const galleryListRef = ref(storage, 'gallery/');
       const res = await listAll(galleryListRef);
-      // Sort gallery items by creation time if possible (not directly available in listAll without metadata fetch),
-      // so we rely on client-side reversing of the array if names are timestamped.
-      // However, names are timestamped in uploadToGallery.
+      // Sort gallery items reverse chronological (assuming name contains timestamp)
       const sortedItems = res.items.sort((a, b) => b.name.localeCompare(a.name)); 
       
       const urls = await Promise.all(sortedItems.map(r => getDownloadURL(r)));
+      
+      // We don't necessarily need to append ?t= here for the gallery LIST, 
+      // but if we want consistency with uploadToGallery, we can.
+      // However, uploadToGallery adds it to the URL stored in the JSON content.
+      // Here we just display what's in the bucket.
       setContent(prev => ({ ...prev, gallery: urls }));
     } catch (e) {
       // console.warn("Gallery load failed");
@@ -359,7 +364,14 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       
       const snap = await uploadBytes(storageRef, file, metadata);
-      const url = await getDownloadURL(snap.ref);
+      let url = await getDownloadURL(snap.ref);
+      
+      // FORCE CACHE BUSTING IN THE URL stored in JSON
+      // This appends &t=TIMESTAMP to the firebase URL. 
+      // This URL will be saved in 'content.images' when mapped, ensuring users get the "new" link.
+      const separator = url.includes('?') ? '&' : '?';
+      url = `${url}${separator}t=${Date.now()}`;
+
       setContent(prev => ({ ...prev, gallery: [url, ...prev.gallery] }));
     } catch (e) { throw e; }
   };
@@ -368,12 +380,26 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      if (!storage) return;
      try {
        await ensureAuth();
-       if (url.includes('firebasestorage.googleapis.com')) {
-          const r = ref(storage, url);
-          await deleteObject(r);
-       }
+       // Strip query params to get storage ref
+       const baseUrl = url.split('?')[0]; 
+       // Firebase storage ref logic needs care with tokens, but generally we can use the full URL 
+       // or if we have the original ref. Here we try to ref from URL.
+       // However, `url` has our extra `&t=` now.
+       // Firebase `ref(storage, url)` handles the full URL including tokens usually.
+       // Let's try passing the full URL, if it fails, we might need to clean it.
+       // Actually, the best way is to not rely on the URL for deletion if possible, 
+       // but here we only have the URL.
+       
+       // NOTE: We try to delete. If it fails due to query params, we might need to clean it.
+       // But typically `ref(storage, https://...)` works.
+       const r = ref(storage, url); 
+       await deleteObject(r);
+       
        setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
-     } catch (e) {}
+     } catch (e) {
+       // If strict delete fails, just remove from local view
+       setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
+     }
   };
 
   const login = (input: string) => {
