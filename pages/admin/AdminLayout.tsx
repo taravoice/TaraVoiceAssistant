@@ -1,16 +1,31 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation, Navigate, Outlet } from 'react-router-dom';
-import { LayoutDashboard, FileText, Image as ImageIcon, Settings as SettingsIcon, LogOut, ExternalLink, Grid, AlertTriangle, CloudOff } from 'lucide-react';
+import { LayoutDashboard, FileText, Image as ImageIcon, Settings as SettingsIcon, LogOut, ExternalLink, Grid, AlertTriangle, CloudOff, Save, Loader2, CheckCircle2 } from 'lucide-react';
 import { useSite } from '../../context/SiteContext';
 
 const AdminLayout: React.FC = () => {
-  const { isAuthenticated, logout, content, isStorageConfigured, syncError } = useSite();
+  const { isAuthenticated, logout, content, isStorageConfigured, syncError, hasUnsavedChanges, publishSite } = useSite();
   const location = useLocation();
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [justPublished, setJustPublished] = useState(false);
 
   if (!isAuthenticated) {
     return <Navigate to="/admin/login" state={{ from: location }} replace />;
   }
+
+  const handlePublish = async () => {
+    setIsPublishing(true);
+    try {
+      await publishSite();
+      setJustPublished(true);
+      setTimeout(() => setJustPublished(false), 3000);
+    } catch (e) {
+      alert("Publish failed. Check settings.");
+    } finally {
+      setIsPublishing(false);
+    }
+  };
 
   const navItems = [
     { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
@@ -63,32 +78,64 @@ const AdminLayout: React.FC = () => {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white shadow-sm h-16 flex items-center px-8 justify-between md:hidden">
+        {/* Mobile Header */}
+        <header className="bg-white shadow-sm h-16 flex items-center px-8 justify-between md:hidden shrink-0">
             <span className="font-bold">Tara Admin</span>
             <button onClick={logout} className="text-slate-500"><LogOut className="w-5 h-5" /></button>
         </header>
 
-        {!isStorageConfigured && (
-          <div className="bg-amber-50 border-b border-amber-200 px-8 py-3 flex items-center text-amber-800 text-sm">
-            <AlertTriangle className="w-4 h-4 mr-2" />
-            <span>
-              <strong>Storage not connected:</strong> Image uploads are disabled. Add your Firebase keys in Vercel to enable the Gallery.
-            </span>
-          </div>
-        )}
+        {/* Global Notifications Area */}
+        <div className="shrink-0 z-10">
+          {!isStorageConfigured && (
+            <div className="bg-amber-50 border-b border-amber-200 px-8 py-3 flex items-center text-amber-800 text-sm">
+              <AlertTriangle className="w-4 h-4 mr-2" />
+              <span>
+                <strong>Storage not connected:</strong> Image uploads are disabled. Add your Firebase keys in Vercel.
+              </span>
+            </div>
+          )}
 
-        {syncError && (
-           <div className="bg-red-600 text-white px-8 py-3 flex items-center shadow-lg animate-fade-in-down">
-              <CloudOff className="w-5 h-5 mr-3" />
-              <div className="flex-1">
-                 <p className="font-bold">Changes Not Saved to Cloud</p>
-                 <p className="text-sm opacity-90">{syncError}</p>
-              </div>
-              <Link to="/admin/settings" className="bg-white text-red-600 px-3 py-1.5 rounded-md text-sm font-bold hover:bg-red-50">
-                 Fix Config
-              </Link>
-           </div>
-        )}
+          {syncError && (
+             <div className="bg-red-600 text-white px-8 py-3 flex items-center shadow-lg">
+                <CloudOff className="w-5 h-5 mr-3" />
+                <div className="flex-1">
+                   <p className="font-bold">Connection Error</p>
+                   <p className="text-sm opacity-90">{syncError}</p>
+                </div>
+                <Link to="/admin/settings" className="bg-white text-red-600 px-3 py-1.5 rounded-md text-sm font-bold hover:bg-red-50">
+                   Fix Config
+                </Link>
+             </div>
+          )}
+
+          {/* DRAFT PUBLISH BAR */}
+          {hasUnsavedChanges && isStorageConfigured && !syncError && (
+             <div className="bg-slate-800 text-white px-8 py-3 flex items-center justify-between shadow-md animate-fade-in-down">
+                <div className="flex items-center">
+                   <div className="w-3 h-3 bg-amber-400 rounded-full animate-pulse mr-3"></div>
+                   <div>
+                      <p className="font-bold text-sm">Unsaved Changes (Draft Mode)</p>
+                      <p className="text-xs text-slate-400">Your changes are visible only to you until you publish.</p>
+                   </div>
+                </div>
+                <button 
+                  onClick={handlePublish}
+                  disabled={isPublishing}
+                  className="bg-[#0097b2] hover:bg-[#007f96] text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-all"
+                >
+                   {isPublishing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                   {isPublishing ? 'Publishing...' : 'Publish Live'}
+                </button>
+             </div>
+          )}
+
+          {justPublished && (
+             <div className="bg-green-600 text-white px-8 py-2 flex items-center justify-center animate-fade-in-down">
+                <CheckCircle2 className="w-5 h-5 mr-2" />
+                <span className="font-bold">Site Published Successfully!</span>
+             </div>
+          )}
+        </div>
 
         <main className="flex-1 overflow-auto p-8">
           <Outlet />
