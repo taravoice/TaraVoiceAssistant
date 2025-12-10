@@ -1,4 +1,7 @@
-
+<change>
+    <file>context/SiteContext.tsx</file>
+    <description>Implement versioned storage logic with pointer file to eliminate caching issues.</description>
+    <content><![CDATA[
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { storage, ensureAuth } from '../firebase';
 import { ref, getDownloadURL, listAll, deleteObject, uploadString, uploadBytes } from 'firebase/storage';
@@ -98,16 +101,41 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsStorageConfigured(true);
 
     try {
+      // Always attempt anonymous auth first
       await ensureAuth().catch(err => console.warn("Anon Auth failed, trying public access...", err));
       
-      const configRef = ref(storage, 'config/site_config.json');
-      const baseUrl = await getDownloadURL(configRef);
+      let downloadUrl = '';
+
+      // 1. Try to fetch the "Current Version Pointer" first
+      try {
+        const pointerRef = ref(storage, 'config/current.json');
+        const pointerUrl = await getDownloadURL(pointerRef);
+        // Aggressive cache busting for the pointer file
+        const pointerRes = await fetch(`${pointerUrl}${pointerUrl.includes('?') ? '&' : '?'}t=${Date.now()}`, {
+            cache: 'no-store'
+        });
+        
+        if (pointerRes.ok) {
+            const pointerData = await pointerRes.json();
+            if (pointerData.version) {
+                console.log("🔥 Version System: Found pointer to", pointerData.version);
+                const versionRef = ref(storage, `config/${pointerData.version}`);
+                downloadUrl = await getDownloadURL(versionRef);
+            }
+        }
+      } catch (e) {
+        console.log("ℹ️ Version System: No pointer found, falling back to legacy config.", e);
+      }
+
+      // 2. Fallback to legacy static file if no pointer exists
+      if (!downloadUrl) {
+          const configRef = ref(storage, 'config/site_config.json');
+          downloadUrl = await getDownloadURL(configRef);
+      }
       
-      const separator = baseUrl.includes('?') ? '&' : '?';
-      const response = await fetch(`${baseUrl}${separator}t=${Date.now()}&nocache=true`, { 
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
-      });
+      // 3. Fetch the actual content
+      const separator = downloadUrl.includes('?') ? '&' : '?';
+      const response = await fetch(`${downloadUrl}${separator}nocache=true`);
       
       if (response.ok) {
         const cloudConfig = await response.json();
@@ -117,8 +145,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
            try { localConfig = JSON.parse(localStr); } catch(e) {}
         }
 
-        // DRAFT LOGIC: If local draft is newer than cloud, keep local
-        if (localConfig && localConfig.updatedAt > (cloudConfig.updatedAt || 0)) {
+        // DRAFT LOGIC: If local draft exists and is NEWER than cloud, keep local (for Admin).
+        // For visitors, localConfig is usually null or old, so they get cloudConfig.
+        if (localConfig && (localConfig.updatedAt > (cloudConfig.updatedAt || 0))) {
            console.log("📝 SITE CONTEXT: Local draft is newer. Resuming draft.");
            setContent(prev => ({
              ...prev,
@@ -127,23 +156,24 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
            }));
            setHasUnsavedChanges(true);
         } else {
-           // Cloud is newer or equal, sync to cloud
+           // Cloud is newer or equal, or no local draft -> Sync to cloud
            console.log("☁️ SITE CONTEXT: Synced to Cloud Config.");
            const updated = {
-             ...content, // defaults
+             ...content, 
              ...cloudConfig,
-             images: { ...content.images, ...cloudConfig.images },
+             images: { ...content.images, ...cloudConfig.images }, // merge images to ensure no keys are lost
              updatedAt: cloudConfig.updatedAt || Date.now(),
              gallery: content.gallery
            };
            setContent(updated);
+           // Update local storage to match cloud so we don't have a stale 'draft'
            localStorage.setItem('tara_site_config', JSON.stringify(updated));
            setHasUnsavedChanges(false);
         }
       } 
     } catch (err) {
       console.warn("☁️ SITE CONTEXT: Could not load cloud config. Using local/default.", err);
-      // Fallback to local
+      // Fallback to local if cloud fails
       const local = localStorage.getItem('tara_site_config');
       if (local) {
         try {
@@ -154,13 +184,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Load Gallery separately (read-only list)
     try {
-      if (!isAuthenticated) await ensureAuth().catch(() => {});
       const galleryListRef = ref(storage, 'gallery/');
       const res = await listAll(galleryListRef);
       const urls = await Promise.all(res.items.map(r => getDownloadURL(r)));
       setContent(prev => ({ ...prev, gallery: urls }));
     } catch (e) {
-      console.warn("Gallery load failed (likely permission or empty)", e);
+      // console.warn("Gallery load failed (likely permission or empty)");
     }
 
     setIsInitialized(true);
@@ -178,14 +207,36 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     try {
       await ensureAuth();
-      const configRef = ref(storage, 'config/site_config.json');
       const { gallery, ...saveData } = newContent;
+      const timestamp = Date.now();
       
-      await uploadString(configRef, JSON.stringify(saveData), 'raw', {
+      // VERSIONING SYSTEM IMPLEMENTATION
+      
+      // 1. Define Unique Filename
+      const versionFilename = `site_config_v_${timestamp}.json`;
+      const versionRef = ref(storage, `config/${versionFilename}`);
+      
+      // 2. Upload the actual config file (Cacheable forever since name is unique)
+      await uploadString(versionRef, JSON.stringify(saveData), 'raw', {
         contentType: 'application/json',
-        cacheControl: 'no-cache, no-store, must-revalidate'
+        cacheControl: 'public, max-age=31536000' 
       });
-      console.log("☁️ SITE CONTEXT: Publish success.");
+
+      // 3. Update the Pointer File (Must never cache)
+      const pointerRef = ref(storage, 'config/current.json');
+      await uploadString(pointerRef, JSON.stringify({ version: versionFilename, updatedAt: timestamp }), 'raw', {
+        contentType: 'application/json',
+        cacheControl: 'no-cache, no-store, max-age=0'
+      });
+
+      // 4. Update Legacy File (Backup / Backward Compatibility)
+      const legacyRef = ref(storage, 'config/site_config.json');
+      await uploadString(legacyRef, JSON.stringify(saveData), 'raw', {
+        contentType: 'application/json',
+        cacheControl: 'no-cache'
+      });
+      
+      console.log("☁️ SITE CONTEXT: Publish success (Versioned).");
       setSyncError(null);
     } catch (e: any) {
       console.error("☁️ SITE CONTEXT: Publish failed.", e);
@@ -196,6 +247,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // EXPLICIT PUBLISH ACTION
   const publishSite = async () => {
+     if (!isStorageConfigured) {
+        alert("Cannot publish: Storage not configured.");
+        return;
+     }
+
      // CRITICAL: Update timestamp to NOW to ensure cache busting on all clients
      const timestamp = Date.now();
      const contentToPublish = {
@@ -229,7 +285,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updateStateAndDraft(prev => ({
       ...prev,
       home: { ...prev.home, [key]: value },
-      updatedAt: Date.now()
+      updatedAt: Date.now() // Update local draft time
     }));
   };
 
@@ -261,7 +317,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      await publishSite();
   };
 
-  // Gallery operations still happen immediately as they are file operations, not config operations
+  // Gallery operations
   const uploadToGallery = async (file: File) => {
     if (!storage) throw new Error("Storage not configured");
     try {
@@ -308,7 +364,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionStorage.setItem('t_sid', sid);
       const data = { path, timestamp: Date.now(), sid, ua: navigator.userAgent };
       const logRef = ref(storage, `analytics/logs/${Date.now()}.json`);
-      await uploadString(logRef, JSON.stringify(data), 'raw', { contentType: 'application/json' });
+      // Use fire-and-forget for logs
+      uploadString(logRef, JSON.stringify(data), 'raw', { contentType: 'application/json' }).catch(() => {});
     } catch (e) {}
   };
 
@@ -343,3 +400,46 @@ export const useSite = () => {
   if (!context) throw new Error('Site Context missing.');
   return context;
 };
+]]></content>
+</change>
+<change>
+    <file>index.html</file>
+    <description>Remove conflicting React 19 versions to prevent 'i.H is null' hook errors and ensure stable versioning.</description>
+    <content><![CDATA[
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tara Voice Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      body { background-color: #d9d9d9; margin: 0; font-family: 'Inter', sans-serif; }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@18.2.0",
+    "react-dom": "https://aistudiocdn.com/react-dom@18.2.0",
+    "react-dom/client": "https://aistudiocdn.com/react-dom@18.2.0/client",
+    "react-router-dom": "https://aistudiocdn.com/react-router-dom@6.22.3",
+    "@emailjs/browser": "https://aistudiocdn.com/@emailjs/browser@4.3.3",
+    "@vercel/analytics/react": "https://aistudiocdn.com/@vercel/analytics@1.2.2/react",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@0.344.0",
+    "firebase/app": "https://aistudiocdn.com/firebase@10.9.0/app",
+    "firebase/storage": "https://aistudiocdn.com/firebase@10.9.0/storage",
+    "firebase/auth": "https://aistudiocdn.com/firebase@10.9.0/auth",
+    "vite": "https://aistudiocdn.com/vite@^5.1.4",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^4.2.1"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
+]]></content>
+</change>
+</changes>
