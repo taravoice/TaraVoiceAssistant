@@ -15,6 +15,8 @@ const imageSlots = [
   { key: 'feature4', page: 'Features', section: 'Calendar Sync' },
   { key: 'feature5', page: 'Features', section: 'Analytics' },
   { key: 'feature6', page: 'Features', section: 'Conversational Engine' },
+  { key: 'aboutTeam', page: 'About', section: 'Team Image' },
+  { key: 'aboutFuture', page: 'About', section: 'Future Section Image' },
 ];
 
 const MediaManager: React.FC = () => {
