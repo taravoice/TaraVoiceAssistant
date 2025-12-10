@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSite } from '../../context/SiteContext';
 import { Button } from '../../components/Button';
-import { ShieldCheck, Save, Server, CheckCircle2, XCircle, RefreshCw, CloudLightning, Loader2 } from 'lucide-react';
+import { ShieldCheck, Save, Server, CheckCircle2, XCircle, RefreshCw, CloudLightning, Loader2, ArrowRight } from 'lucide-react';
 import { storage, ensureAuth } from '../../firebase';
 import { ref, uploadString } from 'firebase/storage';
 
@@ -203,15 +203,25 @@ const Settings: React.FC = () => {
                         1. Test Write Permissions
                     </Button>
 
-                    <Button 
-                        fullWidth 
-                        onClick={handleForceSync}
-                        disabled={isPushing || !isStorageConfigured}
-                        className="flex items-center justify-center"
-                    >
-                        {isPushing ? <Loader2 className="w-4 h-4 mr-2 animate-spin"/> : <Save className="w-4 h-4 mr-2"/>}
-                        2. Force Push Local Data to Cloud
-                    </Button>
+                    <div className="relative">
+                        <Button 
+                            fullWidth 
+                            onClick={handleForceSync}
+                            disabled={isPushing || !isStorageConfigured}
+                            className={`flex items-center justify-center ${isStorageConfigured ? 'ring-2 ring-offset-2 ring-[#0097b2] shadow-lg' : ''}`}
+                        >
+                            {isPushing ? <Loader2 className="w-4 h-4 mr-2 animate-spin"/> : <Save className="w-4 h-4 mr-2"/>}
+                            2. Force Push Local Data to Cloud
+                        </Button>
+                        {isStorageConfigured && !isPushing && (
+                           <div className="absolute -right-2 -top-2 w-4 h-4 bg-red-500 rounded-full animate-ping pointer-events-none"></div>
+                        )}
+                    </div>
+                    {isStorageConfigured && (
+                       <p className="text-xs text-[#0097b2] font-semibold text-center mt-2 flex items-center justify-center">
+                         <ArrowRight className="w-3 h-3 mr-1" /> Recommended next step
+                       </p>
+                    )}
                 </div>
             </div>
         </div>
