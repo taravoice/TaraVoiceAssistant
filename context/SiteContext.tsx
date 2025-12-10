@@ -103,80 +103,89 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       let downloadUrl = '';
 
-      // 1. Try to fetch the "Current Version Pointer" first
+      // STRATEGY 1: List all files in 'config/' and pick the latest one by name.
+      // This BYPASSES CDN caching of 'current.json' because listAll hits the storage bucket API directly.
       try {
-        const pointerRef = ref(storage, 'config/current.json');
-        const pointerUrl = await getDownloadURL(pointerRef);
-        // Aggressive cache busting for the pointer file
-        const pointerRes = await fetch(`${pointerUrl}${pointerUrl.includes('?') ? '&' : '?'}t=${Date.now()}`, {
-            cache: 'no-store',
-            headers: { 'Cache-Control': 'no-cache' }
-        });
+        const configFolderRef = ref(storage, 'config/');
+        const res = await listAll(configFolderRef);
         
-        if (pointerRes.ok) {
-            const pointerData = await pointerRes.json();
-            if (pointerData.version) {
-                console.log("🔥 Version System: Found pointer to", pointerData.version);
-                const versionRef = ref(storage, `config/${pointerData.version}`);
-                downloadUrl = await getDownloadURL(versionRef);
-            }
+        // Filter for files matching our pattern: site_config_v_{timestamp}.json
+        // Sort alphabetically (which works for timestamps of same length) to find the latest
+        const versionFiles = res.items
+            .filter(item => item.name.startsWith('site_config_v_') && item.name.endsWith('.json'))
+            .sort((a, b) => a.name.localeCompare(b.name));
+            
+        if (versionFiles.length > 0) {
+            const latest = versionFiles[versionFiles.length - 1];
+            console.log("🔥 Version System: Found latest via direct list:", latest.name);
+            downloadUrl = await getDownloadURL(latest);
         }
       } catch (e) {
-        console.log("ℹ️ Version System: No pointer found, falling back to legacy config.", e);
+        console.warn("Direct list failed, falling back to pointer file...", e);
       }
 
-      // 2. Fallback to legacy static file if no pointer exists
+      // STRATEGY 2: Pointer File (Fallback)
+      if (!downloadUrl) {
+          try {
+            const pointerRef = ref(storage, 'config/current.json');
+            const pointerUrl = await getDownloadURL(pointerRef);
+            const pointerRes = await fetch(`${pointerUrl}${pointerUrl.includes('?') ? '&' : '?'}t=${Date.now()}`, {
+                cache: 'no-store'
+            });
+            if (pointerRes.ok) {
+                const pointerData = await pointerRes.json();
+                if (pointerData.version) {
+                    const versionRef = ref(storage, `config/${pointerData.version}`);
+                    downloadUrl = await getDownloadURL(versionRef);
+                }
+            }
+          } catch(e) {}
+      }
+
+      // STRATEGY 3: Legacy Static File (Last Resort)
       if (!downloadUrl) {
           const configRef = ref(storage, 'config/site_config.json');
           downloadUrl = await getDownloadURL(configRef);
       }
       
-      // 3. Fetch the actual content
-      const separator = downloadUrl.includes('?') ? '&' : '?';
-      const response = await fetch(`${downloadUrl}${separator}nocache=${Date.now()}`);
-      
-      if (response.ok) {
-        const cloudConfig = await response.json();
-        const localStr = localStorage.getItem('tara_site_config');
-        let localConfig = null;
-        if (localStr) {
-           try { localConfig = JSON.parse(localStr); } catch(e) {}
-        }
+      // Fetch the actual content
+      if (downloadUrl) {
+          const separator = downloadUrl.includes('?') ? '&' : '?';
+          const response = await fetch(`${downloadUrl}${separator}nocache=${Date.now()}`);
+          
+          if (response.ok) {
+            const cloudConfig = await response.json();
+            const localStr = localStorage.getItem('tara_site_config');
+            let localConfig = null;
+            if (localStr) {
+               try { localConfig = JSON.parse(localStr); } catch(e) {}
+            }
 
-        // DRAFT LOGIC: If local draft exists and is NEWER than cloud, keep local (for Admin).
-        // For visitors, localConfig is usually null or old, so they get cloudConfig.
-        if (localConfig && (localConfig.updatedAt > (cloudConfig.updatedAt || 0))) {
-           console.log("📝 SITE CONTEXT: Local draft is newer. Resuming draft.");
-           setContent(prev => ({
-             ...prev,
-             ...localConfig,
-             gallery: prev.gallery
-           }));
-           setHasUnsavedChanges(true);
-        } else {
-           // Cloud is newer or equal, or no local draft -> Sync to cloud
-           console.log("☁️ SITE CONTEXT: Synced to Cloud Config.");
-           const updated = {
-             ...content, 
-             ...cloudConfig,
-             images: { ...content.images, ...cloudConfig.images }, // merge images to ensure no keys are lost
-             updatedAt: cloudConfig.updatedAt || Date.now(),
-             gallery: content.gallery
-           };
-           setContent(updated);
-           // Update local storage to match cloud so we don't have a stale 'draft'
-           localStorage.setItem('tara_site_config', JSON.stringify(updated));
-           setHasUnsavedChanges(false);
-        }
-      } 
+            // DRAFT LOGIC: If local draft exists and is NEWER than cloud, keep local (for Admin).
+            if (localConfig && (localConfig.updatedAt > (cloudConfig.updatedAt || 0))) {
+               console.log("📝 SITE CONTEXT: Local draft is newer. Resuming draft.");
+               setContent(prev => ({ ...prev, ...localConfig, gallery: prev.gallery }));
+               setHasUnsavedChanges(true);
+            } else {
+               console.log("☁️ SITE CONTEXT: Synced to Cloud Config.");
+               const updated = {
+                 ...content, 
+                 ...cloudConfig,
+                 images: { ...content.images, ...cloudConfig.images },
+                 updatedAt: cloudConfig.updatedAt || Date.now(),
+                 gallery: content.gallery
+               };
+               setContent(updated);
+               localStorage.setItem('tara_site_config', JSON.stringify(updated));
+               setHasUnsavedChanges(false);
+            }
+          }
+      }
     } catch (err) {
       console.warn("☁️ SITE CONTEXT: Could not load cloud config. Using local/default.", err);
-      // Fallback to local if cloud fails
       const local = localStorage.getItem('tara_site_config');
       if (local) {
-        try {
-          setContent(prev => ({ ...prev, ...JSON.parse(local) }));
-        } catch (e) {}
+        try { setContent(prev => ({ ...prev, ...JSON.parse(local) })); } catch (e) {}
       }
     }
 
@@ -184,10 +193,15 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const galleryListRef = ref(storage, 'gallery/');
       const res = await listAll(galleryListRef);
-      const urls = await Promise.all(res.items.map(r => getDownloadURL(r)));
+      // Sort gallery items by creation time if possible (not directly available in listAll without metadata fetch),
+      // so we rely on client-side reversing of the array if names are timestamped.
+      // However, names are timestamped in uploadToGallery.
+      const sortedItems = res.items.sort((a, b) => b.name.localeCompare(a.name)); 
+      
+      const urls = await Promise.all(sortedItems.map(r => getDownloadURL(r)));
       setContent(prev => ({ ...prev, gallery: urls }));
     } catch (e) {
-      // console.warn("Gallery load failed (likely permission or empty)");
+      // console.warn("Gallery load failed");
     }
 
     setIsInitialized(true);
@@ -214,14 +228,14 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const versionFilename = `site_config_v_${timestamp}.json`;
       const versionRef = ref(storage, `config/${versionFilename}`);
       
-      // 2. Upload the actual config file (Cacheable forever since name is unique)
+      // 2. Upload the actual config file
       await uploadString(versionRef, JSON.stringify(saveData), 'raw', {
         contentType: 'application/json',
         cacheControl: 'public, max-age=31536000',
         customMetadata: { type: 'config', version: String(timestamp) }
       });
 
-      // 3. Update the Pointer File (Must never cache)
+      // 3. Update the Pointer File (Still useful for simple checks, even if listing is preferred)
       const pointerRef = ref(storage, 'config/current.json');
       await uploadString(pointerRef, JSON.stringify({ version: versionFilename, updatedAt: timestamp }), 'raw', {
         contentType: 'application/json',
@@ -229,11 +243,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         customMetadata: { type: 'pointer', updated: new Date().toISOString() }
       });
 
-      // 4. Update Legacy File (Backup / Backward Compatibility)
+      // 4. Update Legacy File (Backup)
       const legacyRef = ref(storage, 'config/site_config.json');
       await uploadString(legacyRef, JSON.stringify(saveData), 'raw', {
         contentType: 'application/json',
-        cacheControl: 'no-cache, max-age=0',
+        cacheControl: 'no-cache',
         customMetadata: { type: 'legacy_config' }
       });
       
@@ -253,7 +267,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
      }
 
-     // CRITICAL: Update timestamp to NOW to ensure cache busting on all clients
+     // CRITICAL: Update timestamp to NOW
      const timestamp = Date.now();
      const contentToPublish = {
        ...content,
@@ -271,11 +285,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      localStorage.setItem('tara_site_config', JSON.stringify(contentToPublish));
   };
 
-  // Helper to update state and mark as draft
   const updateStateAndDraft = (updater: (prev: SiteContent) => SiteContent) => {
      setContent(prev => {
         const next = updater(prev);
-        // Save Draft to LocalStorage
         localStorage.setItem('tara_site_config', JSON.stringify(next));
         return next;
      });
@@ -286,7 +298,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updateStateAndDraft(prev => ({
       ...prev,
       home: { ...prev.home, [key]: value },
-      updatedAt: Date.now() // Update local draft time
+      updatedAt: Date.now()
     }));
   };
 
@@ -326,10 +338,20 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const path = `gallery/${Date.now()}_${file.name}`;
       const storageRef = ref(storage, path);
       
-      // CRITICAL: Set Metadata to fix "No metadata found" and caching issues
+      // CRITICAL FIX: Robust Metadata Logic
+      let mimeType = file.type;
+      if (!mimeType) {
+         const ext = file.name.split('.').pop()?.toLowerCase();
+         if (ext === 'png') mimeType = 'image/png';
+         else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+         else if (ext === 'webp') mimeType = 'image/webp';
+         else if (ext === 'svg') mimeType = 'image/svg+xml';
+         else mimeType = 'application/octet-stream';
+      }
+
       const metadata = {
-        contentType: file.type,
-        cacheControl: 'public, max-age=31536000', // 1 year cache for immutable files
+        contentType: mimeType,
+        cacheControl: 'public, max-age=31536000', // 1 year cache
         customMetadata: { 
            originalName: file.name,
            uploadedAt: new Date().toISOString()
@@ -376,7 +398,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionStorage.setItem('t_sid', sid);
       const data = { path, timestamp: Date.now(), sid, ua: navigator.userAgent };
       const logRef = ref(storage, `analytics/logs/${Date.now()}.json`);
-      // Use fire-and-forget for logs
       uploadString(logRef, JSON.stringify(data), 'raw', { contentType: 'application/json' }).catch(() => {});
     } catch (e) {}
   };
@@ -396,7 +417,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       syncError, 
       login, 
       logout, 
-      changePassword,
+      changePassword, 
       isInitialized,
       hasUnsavedChanges, 
       publishSite,
