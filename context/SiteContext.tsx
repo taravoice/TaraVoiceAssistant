@@ -1,6 +1,7 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { storage, ensureAuth } from '../firebase';
-import { ref, getDownloadURL, listAll, deleteObject, uploadString } from 'firebase/storage';
+import { ref, getDownloadURL, listAll, deleteObject, uploadString, uploadBytes } from 'firebase/storage';
 
 export interface CustomSection {
   id: string;
@@ -144,72 +145,73 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await ensureAuth();
       const configRef = ref(storage, 'config/site_config.json');
       const { gallery, ...saveData } = newContent;
+      
+      console.log("☁️ SITE CONTEXT: Saving config to cloud...", saveData);
+      
       await uploadString(configRef, JSON.stringify(saveData), 'raw', {
         contentType: 'application/json',
         cacheControl: 'no-cache, no-store, must-revalidate'
       });
+      console.log("☁️ SITE CONTEXT: Save success.");
     } catch (e) {
       console.error("☁️ SITE CONTEXT: Broadcast failed.", e);
+      throw e; // Propagate error so UI can show alert
     }
   }, []);
 
   const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
     const time = Date.now();
-    setContent(prev => {
-      const updated = { 
-        ...prev, 
-        home: { ...prev.home, [key]: value }, 
-        updatedAt: time 
-      };
-      localStorage.setItem('tara_site_config', JSON.stringify(updated));
-      saveToCloud(updated);
-      return updated;
-    });
+    const updated = { 
+      ...content, 
+      home: { ...content.home, [key]: value }, 
+      updatedAt: time 
+    };
+    
+    setContent(updated);
+    localStorage.setItem('tara_site_config', JSON.stringify(updated));
+    await saveToCloud(updated);
   };
 
   const addCustomSection = async (section: CustomSection) => {
     const time = Date.now();
-    setContent(prev => {
-      const updated = { 
-        ...prev, 
-        customSections: [...prev.customSections, section], 
-        updatedAt: time 
-      };
-      localStorage.setItem('tara_site_config', JSON.stringify(updated));
-      saveToCloud(updated);
-      return updated;
-    });
+    const updated = { 
+      ...content, 
+      customSections: [...content.customSections, section], 
+      updatedAt: time 
+    };
+    
+    setContent(updated);
+    localStorage.setItem('tara_site_config', JSON.stringify(updated));
+    await saveToCloud(updated);
   };
 
   const removeCustomSection = async (id: string) => {
     const time = Date.now();
-    setContent(prev => {
-      const updated = { 
-        ...prev, 
-        customSections: prev.customSections.filter(s => s.id !== id), 
-        updatedAt: time 
-      };
-      localStorage.setItem('tara_site_config', JSON.stringify(updated));
-      saveToCloud(updated);
-      return updated;
-    });
+    const updated = { 
+      ...content, 
+      customSections: content.customSections.filter(s => s.id !== id), 
+      updatedAt: time 
+    };
+    
+    setContent(updated);
+    localStorage.setItem('tara_site_config', JSON.stringify(updated));
+    await saveToCloud(updated);
   };
 
   const updateImage = async (key: string, url: string) => {
     const time = Date.now();
-    setContent(prev => {
-      const updated = { 
-        ...prev, 
-        images: { 
-          ...prev.images, 
-          [key]: url 
-        }, 
-        updatedAt: time 
-      };
-      localStorage.setItem('tara_site_config', JSON.stringify(updated));
-      saveToCloud(updated);
-      return updated;
-    });
+    const updated = { 
+      ...content, 
+      images: { 
+        ...content.images, 
+        [key]: url 
+      }, 
+      updatedAt: time 
+    };
+    
+    setContent(updated);
+    localStorage.setItem('tara_site_config', JSON.stringify(updated));
+    await saveToCloud(updated);
   };
 
   const uploadToGallery = async (file: File) => {
@@ -218,7 +220,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await ensureAuth();
       const path = `gallery/${Date.now()}_${file.name}`;
       const storageRef = ref(storage, path);
-      const { uploadBytes } = await import('firebase/storage');
+      // Static import used instead of dynamic to avoid type resolution errors
       const snap = await uploadBytes(storageRef, file);
       const url = await getDownloadURL(snap.ref);
       setContent(prev => ({ ...prev, gallery: [url, ...prev.gallery] }));
