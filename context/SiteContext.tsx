@@ -57,7 +57,6 @@ const initialImages: SiteImages = {
   feature4: 'https://images.unsplash.com/photo-1506784365847-bbad939e9335?q=80&w=2069&auto=format&fit=crop',
   feature5: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2015&auto=format&fit=crop',
   feature6: 'https://images.unsplash.com/photo-1531746790731-6c087fecd65a?q=80&w=2006&auto=format&fit=crop',
-  // Added About Page Images
   aboutTeam: 'https://images.unsplash.com/photo-1552664730-d307ca884978?q=80&w=2070&auto=format&fit=crop',
   aboutFuture: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=1965&auto=format&fit=crop',
 };
@@ -87,24 +86,24 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const initSite = useCallback(async () => {
     if (!storage) {
+      console.warn("⚠️ Firebase Storage is NOT initialized. Check API keys.");
       setIsInitialized(true);
       return;
     }
     setIsStorageConfigured(true);
 
     try {
-      // CRITICAL: Ensure we are authenticated (anonymously) before trying to read config.
-      // This prevents permission errors if the storage rules require auth.
+      // Ensure anonymous auth to access bucket
       await ensureAuth().catch(err => console.warn("Anon Auth failed, trying public access...", err));
       
       const configRef = ref(storage, 'config/site_config.json');
       const baseUrl = await getDownloadURL(configRef);
       
       const separator = baseUrl.includes('?') ? '&' : '?';
-      // Use a robust cache buster
+      // Robust cache busting
       const response = await fetch(`${baseUrl}${separator}t=${Date.now()}&nocache=true`, { 
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' }
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
       });
       
       if (response.ok) {
@@ -136,9 +135,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    // Always fetch the gallery
+    // Always fetch the gallery if possible
     try {
-      // Ensure auth again for gallery list
       if (!isAuthenticated) await ensureAuth().catch(() => {});
       const galleryListRef = ref(storage, 'gallery/');
       const res = await listAll(galleryListRef);
@@ -156,7 +154,10 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [initSite]);
 
   const saveToCloud = useCallback(async (newContent: SiteContent) => {
-    if (!storage) return;
+    if (!storage) {
+      // CRITICAL FIX: Throw error if storage is missing so UI can alert user
+      throw new Error("Cloud Sync Failed: Storage is not configured. Please check Vercel Environment Variables.");
+    }
     try {
       await ensureAuth();
       const configRef = ref(storage, 'config/site_config.json');
@@ -231,12 +232,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const uploadToGallery = async (file: File) => {
-    if (!storage) return;
+    if (!storage) throw new Error("Storage not configured");
     try {
       await ensureAuth();
       const path = `gallery/${Date.now()}_${file.name}`;
       const storageRef = ref(storage, path);
-      // Static import used instead of dynamic to avoid type resolution errors
       const snap = await uploadBytes(storageRef, file);
       const url = await getDownloadURL(snap.ref);
       setContent(prev => ({ ...prev, gallery: [url, ...prev.gallery] }));
