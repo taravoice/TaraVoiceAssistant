@@ -62,10 +62,10 @@ function App() {
             <Layout>
               <Routes>
                 <Route path="/" element={<Home />} />
-                <Route path="/about" element={<About />} />
-                <Route path="/features" element={<Features />} />
-                <Route path="/pricing" element={<Pricing />} />
-                <Route path="/contact" element={<Contact />} />
+                <Route path="about" element={<About />} />
+                <Route path="features" element={<Features />} />
+                <Route path="pricing" element={<Pricing />} />
+                <Route path="contact" element={<Contact />} />
               </Routes>
             </Layout>
           } />
