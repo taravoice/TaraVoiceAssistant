@@ -99,12 +99,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       // 1. Ensure Auth exists before trying any storage operations
-      // This is critical for listAll to work on visitor browsers
       await ensureAuth().catch(err => console.warn("Anon Auth failed, trying public access...", err));
       
       let downloadUrl = '';
 
       // STRATEGY 1: List all files in 'config/' and pick the latest one by name.
+      // This bypasses 'current.json' caching issues completely.
       try {
         const configFolderRef = ref(storage, 'config/');
         const res = await listAll(configFolderRef);
@@ -116,22 +116,25 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
             
         if (versionFiles.length > 0) {
             const latest = versionFiles[versionFiles.length - 1];
-            // Get URL of the absolutely latest file found in the bucket
             downloadUrl = await getDownloadURL(latest);
-            console.log("🔥 Version System: Found latest config via direct list:", latest.name);
+            console.log("🔥 Version System: Found latest config via listAll:", latest.name);
         }
       } catch (e) {
-        console.warn("Direct list failed, falling back to pointer file...", e);
+        console.warn("Direct list failed, falling back to pointer file.", e);
       }
 
-      // STRATEGY 2: Pointer File (Fallback if listAll is blocked)
+      // STRATEGY 2: Pointer File (Fallback if listAll is blocked by permissions)
       if (!downloadUrl) {
           try {
             const pointerRef = ref(storage, 'config/current.json');
             const pointerUrl = await getDownloadURL(pointerRef);
+            
+            // AGGRESSIVE CACHE BUSTING: 'no-store' + timestamp
             const pointerRes = await fetch(`${pointerUrl}${pointerUrl.includes('?') ? '&' : '?'}t=${Date.now()}`, {
-                cache: 'no-store'
+                cache: 'no-store',
+                headers: { 'Cache-Control': 'no-cache, no-store' }
             });
+            
             if (pointerRes.ok) {
                 const pointerData = await pointerRes.json();
                 if (pointerData.version) {
@@ -151,7 +154,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Fetch the actual content
       if (downloadUrl) {
           const separator = downloadUrl.includes('?') ? '&' : '?';
-          const response = await fetch(`${downloadUrl}${separator}nocache=${Date.now()}`);
+          const response = await fetch(`${downloadUrl}${separator}nocache=${Date.now()}`, {
+             cache: 'no-store'
+          });
           
           if (response.ok) {
             const cloudConfig = await response.json();
@@ -162,27 +167,22 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             // DECISION LOGIC:
-            // 1. If we are Admin (have a password set locally implies admin usage previously) OR
-            // 2. If local config is explicitly marked as newer (Draft)
-            // Then use local. Otherwise, FORCE sync to cloud to fix "empty spaces" issue for visitors.
-            
+            // Only respect local draft if it is marked as a DRAFT (updatedAt > cloud)
             const isLocalNewer = localConfig && (localConfig.updatedAt > (cloudConfig.updatedAt || 0));
-            const hasDraftMarker = localConfig && localConfig.updatedAt > 0;
             
-            // Only respect local draft if it looks valid and newer.
-            // For random visitors with stale cache, cloudConfig is the truth.
-            if (isLocalNewer && hasDraftMarker) {
+            if (isLocalNewer) {
                console.log("📝 SITE CONTEXT: Local draft is newer. Resuming draft.");
                setContent(prev => ({ ...prev, ...localConfig, gallery: prev.gallery }));
                setHasUnsavedChanges(true);
             } else {
                console.log("☁️ SITE CONTEXT: Synced to Cloud Config.");
+               // Merge with empty defaults to ensure no keys are missing causing crashes
                const updated = {
-                 ...content, 
+                 ...initialContent,
                  ...cloudConfig,
-                 images: { ...content.images, ...cloudConfig.images },
+                 images: { ...initialContent.images, ...cloudConfig.images }, // Ensure image keys exist
                  updatedAt: cloudConfig.updatedAt || Date.now(),
-                 gallery: content.gallery
+                 gallery: content.gallery // Keep gallery valid
                };
                setContent(updated);
                localStorage.setItem('tara_site_config', JSON.stringify(updated));
@@ -191,8 +191,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
       }
     } catch (err) {
-      console.warn("☁️ SITE CONTEXT: Could not load cloud config. Using local/default.", err);
-      // Only fallback to local if cloud completely failed (e.g. offline)
+      console.warn("☁️ SITE CONTEXT: Could not load cloud config.", err);
+      // Fallback to local if cloud fails completely
       const local = localStorage.getItem('tara_site_config');
       if (local) {
         try { setContent(prev => ({ ...prev, ...JSON.parse(local) })); } catch (e) {}
@@ -203,9 +203,13 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const galleryListRef = ref(storage, 'gallery/');
       const res = await listAll(galleryListRef);
+      // Sort gallery by creation time (name prefix) descending
       const sortedItems = res.items.sort((a, b) => b.name.localeCompare(a.name)); 
       const urls = await Promise.all(sortedItems.map(r => getDownloadURL(r)));
-      setContent(prev => ({ ...prev, gallery: urls }));
+      
+      // Bust cache for gallery thumbnails
+      const bustedUrls = urls.map(u => `${u}${u.includes('?') ? '&' : '?'}t=${Date.now()}`);
+      setContent(prev => ({ ...prev, gallery: bustedUrls }));
     } catch (e) {
       // console.warn("Gallery load failed");
     }
@@ -229,7 +233,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const timestamp = Date.now();
       
       // VERSIONING SYSTEM
-      
       // 1. Define Unique Filename
       const versionFilename = `site_config_v_${timestamp}.json`;
       const versionRef = ref(storage, `config/${versionFilename}`);
@@ -356,7 +359,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const snap = await uploadBytes(storageRef, file, metadata);
       let url = await getDownloadURL(snap.ref);
       
-      // FORCE CACHE BUSTING
+      // FORCE CACHE BUSTING by appending timestamp immediately
       const separator = url.includes('?') ? '&' : '?';
       url = `${url}${separator}t=${Date.now()}`;
 
@@ -368,7 +371,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      if (!storage) return;
      try {
        await ensureAuth();
-       const baseUrl = url.split('?')[0]; 
        const r = ref(storage, url); 
        await deleteObject(r);
        setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
