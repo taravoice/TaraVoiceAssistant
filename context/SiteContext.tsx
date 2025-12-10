@@ -109,7 +109,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const pointerUrl = await getDownloadURL(pointerRef);
         // Aggressive cache busting for the pointer file
         const pointerRes = await fetch(`${pointerUrl}${pointerUrl.includes('?') ? '&' : '?'}t=${Date.now()}`, {
-            cache: 'no-store'
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' }
         });
         
         if (pointerRes.ok) {
@@ -132,7 +133,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // 3. Fetch the actual content
       const separator = downloadUrl.includes('?') ? '&' : '?';
-      const response = await fetch(`${downloadUrl}${separator}nocache=true`);
+      const response = await fetch(`${downloadUrl}${separator}nocache=${Date.now()}`);
       
       if (response.ok) {
         const cloudConfig = await response.json();
@@ -216,21 +217,24 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // 2. Upload the actual config file (Cacheable forever since name is unique)
       await uploadString(versionRef, JSON.stringify(saveData), 'raw', {
         contentType: 'application/json',
-        cacheControl: 'public, max-age=31536000' 
+        cacheControl: 'public, max-age=31536000',
+        customMetadata: { type: 'config', version: String(timestamp) }
       });
 
       // 3. Update the Pointer File (Must never cache)
       const pointerRef = ref(storage, 'config/current.json');
       await uploadString(pointerRef, JSON.stringify({ version: versionFilename, updatedAt: timestamp }), 'raw', {
         contentType: 'application/json',
-        cacheControl: 'no-cache, no-store, max-age=0'
+        cacheControl: 'no-cache, no-store, max-age=0',
+        customMetadata: { type: 'pointer', updated: new Date().toISOString() }
       });
 
       // 4. Update Legacy File (Backup / Backward Compatibility)
       const legacyRef = ref(storage, 'config/site_config.json');
       await uploadString(legacyRef, JSON.stringify(saveData), 'raw', {
         contentType: 'application/json',
-        cacheControl: 'no-cache'
+        cacheControl: 'no-cache, max-age=0',
+        customMetadata: { type: 'legacy_config' }
       });
       
       console.log("☁️ SITE CONTEXT: Publish success (Versioned).");
@@ -321,7 +325,18 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await ensureAuth();
       const path = `gallery/${Date.now()}_${file.name}`;
       const storageRef = ref(storage, path);
-      const snap = await uploadBytes(storageRef, file);
+      
+      // CRITICAL: Set Metadata to fix "No metadata found" and caching issues
+      const metadata = {
+        contentType: file.type,
+        cacheControl: 'public, max-age=31536000', // 1 year cache for immutable files
+        customMetadata: { 
+           originalName: file.name,
+           uploadedAt: new Date().toISOString()
+        }
+      };
+      
+      const snap = await uploadBytes(storageRef, file, metadata);
       const url = await getDownloadURL(snap.ref);
       setContent(prev => ({ ...prev, gallery: [url, ...prev.gallery] }));
     } catch (e) { throw e; }
@@ -383,7 +398,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logout, 
       changePassword,
       isInitialized,
-      hasUnsavedChanges,
+      hasUnsavedChanges, 
       publishSite,
       forceSync
     }}>
