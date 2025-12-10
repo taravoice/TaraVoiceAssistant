@@ -321,10 +321,21 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
-    // IMPORTANT: Strip any existing query parameters (like previous timestamps)
-    // This ensures we store the "Clean" URL. The frontend will append the global
-    // site update timestamp dynamically.
-    const cleanUrl = url.split('?')[0];
+    // IMPORTANT: We must preserve 'alt=media' and 'token' for Firebase URLs to work.
+    // We ONLY want to remove our custom cache busters (t=...) and nocache params.
+    let cleanUrl = url;
+    try {
+       const urlObj = new URL(url);
+       urlObj.searchParams.delete('t');
+       urlObj.searchParams.delete('nocache');
+       cleanUrl = urlObj.toString();
+    } catch (e) {
+       // Fallback regex that only removes &t=... or ?t=... 
+       cleanUrl = url.replace(/([?&])t=\d+/, '');
+       // Fix dangling & if needed, though URL object is safer
+       if (cleanUrl.endsWith('&')) cleanUrl = cleanUrl.slice(0, -1);
+       if (cleanUrl.endsWith('?')) cleanUrl = cleanUrl.slice(0, -1);
+    }
 
     updateStateAndDraft(prev => ({
       ...prev,
@@ -367,7 +378,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let url = await getDownloadURL(snap.ref);
       
       // We append the timestamp here so the GALLERY list sees a fresh image immediately.
-      // However, `updateImage` will strip this before saving to the config to prevent lock-in.
+      // However, `updateImage` will clean this before saving to config.
       const separator = url.includes('?') ? '&' : '?';
       url = `${url}${separator}t=${Date.now()}`;
 
@@ -379,15 +390,13 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      if (!storage) return;
      try {
        await ensureAuth();
-       // Strip params for deletion logic if needed
-       const cleanUrl = url.split('?')[0];
+       const cleanUrl = url.split('?')[0]; // Deleting object by ref usually works with just path
        if (cleanUrl.includes('firebasestorage.googleapis.com')) {
           const r = ref(storage, cleanUrl);
           await deleteObject(r);
        }
        setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
      } catch (e) {
-       // Optimistically remove even if remote delete fails
        setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
      }
   };
