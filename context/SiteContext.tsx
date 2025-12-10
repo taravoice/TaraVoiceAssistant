@@ -90,7 +90,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
   const initSite = useCallback(async () => {
-    // Basic configuration check
+    // 1. Basic configuration check
     if (!storage) {
       console.warn("⚠️ Firebase Storage is NOT initialized. Check API keys.");
       setIsInitialized(true);
@@ -99,55 +99,72 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsStorageConfigured(true);
 
     try {
-      // 1. Attempt Authentication (Silent)
-      // This might fail on privacy-focused browsers, but we proceed anyway.
-      await ensureAuth().catch(() => {});
+      // NON-BLOCKING AUTH: We do NOT await this.
+      // We start the auth process in background but immediately try to fetch public config.
+      // This prevents the site from hanging if Auth is blocked or slow.
+      ensureAuth().catch(e => console.warn("Background Auth check failed (harmless for visitors):", e));
       
       let cloudConfig = null;
 
-      // 2. Fetch Logic
-      // We prioritize finding the "Pointer File" (current.json) via SDK URL generation.
-      // SDK URL generation is robust and handles token details for us.
+      // 2. FETCH POINTER: Try to get the pointer URL via SDK or Direct Fallback
+      let pointerUrl = '';
       try {
-        const pointerRef = ref(storage, 'config/current.json');
-        
-        // Get the signed/public URL from Firebase SDK
-        const pointerUrl = await getDownloadURL(pointerRef);
-        
-        // Critical: Append timestamp to the REQUEST URL to bust browser/CDN cache
-        const cacheBustedUrl = `${pointerUrl}${pointerUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
-        
-        const pointerRes = await fetch(cacheBustedUrl, { cache: 'no-store' });
-        
-        if (pointerRes.ok) {
-            const pointerData = await pointerRes.json();
-            if (pointerData.version) {
-                console.log("🔥 Init: Found pointer version:", pointerData.version);
-                
-                // Now fetch the actual versioned config file
-                const versionRef = ref(storage, `config/${pointerData.version}`);
-                const versionUrl = await getDownloadURL(versionRef);
-                const configRes = await fetch(versionUrl);
-                
-                if (configRes.ok) {
-                    cloudConfig = await configRes.json();
-                }
-            }
-        }
+         // Try SDK first (handles tokens)
+         const pointerRef = ref(storage, 'config/current.json');
+         pointerUrl = await getDownloadURL(pointerRef);
       } catch (e) {
-         console.warn("Pointer fetch failed, trying legacy fallback...", e);
+         // Fallback: Construct Direct URL manually if SDK fails (e.g. Script Blocked)
+         // This assumes public read access is enabled in rules.
+         if (bucketName) {
+            pointerUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fcurrent.json?alt=media`;
+         }
       }
 
-      // 3. Fallback: Legacy site_config.json
+      if (pointerUrl) {
+         try {
+            // Aggressive Cache Busting
+            const cacheBustedUrl = `${pointerUrl}${pointerUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+            const pointerRes = await fetch(cacheBustedUrl, { cache: 'no-store' });
+            
+            if (pointerRes.ok) {
+                const pointerData = await pointerRes.json();
+                if (pointerData.version) {
+                    console.log("🔥 Init: Found pointer version:", pointerData.version);
+                    
+                    // Fetch the actual versioned config file
+                    // We can use the same Direct URL strategy for the config file
+                    let versionUrl = '';
+                    try {
+                        const versionRef = ref(storage, `config/${pointerData.version}`);
+                        versionUrl = await getDownloadURL(versionRef);
+                    } catch (e) {
+                        if (bucketName) {
+                            const encodedName = encodeURIComponent(`config/${pointerData.version}`);
+                            versionUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodedName}?alt=media`;
+                        }
+                    }
+
+                    if (versionUrl) {
+                        const configRes = await fetch(versionUrl);
+                        if (configRes.ok) {
+                            cloudConfig = await configRes.json();
+                        }
+                    }
+                }
+            }
+         } catch (e) {
+             console.warn("Pointer fetch failed", e);
+         }
+      }
+
+      // 3. Fallback: Legacy site_config.json if pointer failed
       if (!cloudConfig) {
          try {
             const legacyRef = ref(storage, 'config/site_config.json');
             const legacyUrl = await getDownloadURL(legacyRef);
             const res = await fetch(`${legacyUrl}${legacyUrl.includes('?') ? '&' : '?'}t=${Date.now()}`);
             if (res.ok) cloudConfig = await res.json();
-         } catch(e) {
-            console.warn("Legacy fetch failed", e);
-         }
+         } catch(e) { /* Ignore */ }
       }
       
       // 4. Apply Configuration
@@ -158,7 +175,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
            try { localConfig = JSON.parse(localStr); } catch(e) {}
         }
 
-        // Only use local draft if we are the Admin (Authenticated) and it's newer
+        // Only use local draft if we are the Admin AND it's newer
+        // For visitors, we ALWAYS enforce cloud config to avoid stale state
         const isLocalNewer = isAuthenticated && localConfig && (localConfig.updatedAt > (cloudConfig.updatedAt || 0));
         
         if (isLocalNewer) {
@@ -187,22 +205,24 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn("☁️ SITE CONTEXT: Fatal init error.", err);
     }
 
-    // 5. Load Gallery (Non-blocking)
+    // 5. Load Gallery (Admin Only / Background)
+    // We wrap this separately so it doesn't block the main content
     try {
-      const galleryListRef = ref(storage, 'gallery/');
-      const res = await listAll(galleryListRef);
-      // Sort by name desc (assuming timestamp prefix)
-      const sortedItems = res.items.sort((a, b) => b.name.localeCompare(a.name)); 
-      
-      const urls = await Promise.all(sortedItems.map(async (r) => {
-         const u = await getDownloadURL(r);
-         // Append cache buster to gallery images so admin sees fresh uploads
-         return `${u}${u.includes('?') ? '&' : '?'}t=${Date.now()}`;
-      }));
-      
-      setContent(prev => ({ ...prev, gallery: urls }));
+      if (isAuthenticated) {
+          const galleryListRef = ref(storage, 'gallery/');
+          const res = await listAll(galleryListRef);
+          // Sort by name desc (assuming timestamp prefix)
+          const sortedItems = res.items.sort((a, b) => b.name.localeCompare(a.name)); 
+          
+          const urls = await Promise.all(sortedItems.map(async (r) => {
+             const u = await getDownloadURL(r);
+             return `${u}${u.includes('?') ? '&' : '?'}t=${Date.now()}`;
+          }));
+          
+          setContent(prev => ({ ...prev, gallery: urls }));
+      }
     } catch (e) {
-      // console.log("Gallery load skipped");
+       // Silent fail for gallery
     }
 
     setIsInitialized(true);
@@ -308,31 +328,29 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
-    // Clean URL: Remove our custom cache busters (t=...) and nocache params
-    // BUT preserve the 'alt' and 'token' params required by Firebase
+    // Robust URL Cleaning: Remove ONLY the 't' and 'nocache' params we added.
+    // We do NOT use URLSearchParams because it can sometimes re-encode chars and break tokens.
     let cleanUrl = url;
-    
+
     try {
-       // Check if it's a valid URL first
-       const urlObj = new URL(url);
-       
-       // Create a new search params object to avoid mutation issues
-       const params = new URLSearchParams(urlObj.search);
-       
-       // Remove ONLY the cache-busting params we added
-       params.delete('t');
-       params.delete('nocache');
-       
-       // Reconstruct URL
-       urlObj.search = params.toString();
-       cleanUrl = urlObj.toString();
+        // Regex to safely remove &t=... or ?t=... without touching other params
+        // Replaces ?t=123 with ? (or empty if it was the only param)
+        // Replaces &t=123 with nothing
+        cleanUrl = cleanUrl
+            .replace(/([?&])t=\d+/, '$1')
+            .replace(/([?&])nocache=\d+/, '$1');
+        
+        // Clean up any double ampersands or trailing separators caused by the replacement
+        cleanUrl = cleanUrl
+            .replace(/&&/g, '&')
+            .replace(/[?&]$/, ''); // Remove trailing ? or &
+            
+        // If we removed the first param (e.g. ?t=...), ensure subsequent params start with ? not &
+        if (cleanUrl.includes('firebasestorage') && cleanUrl.indexOf('?') === -1 && cleanUrl.indexOf('&') !== -1) {
+            cleanUrl = cleanUrl.replace('&', '?');
+        }
     } catch (e) {
-       // Fallback for partial/invalid URLs: Just basic string replacement
-       cleanUrl = url.replace(/[?&]t=\d+/, '').replace(/[?&]nocache=\d+/, '');
-       // Fix dangling & or ? at end if removal caused it
-       if (cleanUrl.endsWith('&') || cleanUrl.endsWith('?')) {
-          cleanUrl = cleanUrl.slice(0, -1);
-       }
+        console.warn("URL cleaning failed, using raw", e);
     }
 
     updateStateAndDraft(prev => ({
@@ -386,30 +404,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      if (!storage) return;
      try {
        await ensureAuth();
-       
-       // Clean URL before deleting (remove tokens/query params)
-       let pathRef = '';
-       try {
-         const urlObj = new URL(url);
-         // Firebase storage path structure: .../o/FOLDER%2FFILE?alt...
-         const pathStart = urlObj.pathname.indexOf('/o/');
-         if (pathStart !== -1) {
-            const encodedPath = urlObj.pathname.substring(pathStart + 3);
-            pathRef = decodeURIComponent(encodedPath);
-         }
-       } catch (e) {
-         // Fallback
-       }
-
-       if (pathRef) {
-          const r = ref(storage, pathRef);
-          await deleteObject(r);
-       } else {
-          // Try ref from URL directly if parsing failed
-          const r = ref(storage, url);
-          await deleteObject(r);
-       }
-       
+       // Try ref from URL directly
+       const r = ref(storage, url);
+       await deleteObject(r);
        setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
      } catch (e) {
        console.error("Delete failed", e);
@@ -435,12 +432,13 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logVisit = async (path: string) => {
     if (!storage || path.startsWith('/admin')) return;
     try {
-      await ensureAuth();
-      const sid = sessionStorage.getItem('t_sid') || Math.random().toString(36).substring(2);
-      sessionStorage.setItem('t_sid', sid);
-      const data = { path, timestamp: Date.now(), sid, ua: navigator.userAgent };
-      const logRef = ref(storage, `analytics/logs/${Date.now()}.json`);
-      uploadString(logRef, JSON.stringify(data), 'raw', { contentType: 'application/json' }).catch(() => {});
+       // Fire and forget logging
+       // We do NOT await ensureAuth here to prevent blocking nav
+       const logRef = ref(storage, `analytics/logs/${Date.now()}.json`);
+       const sid = sessionStorage.getItem('t_sid') || Math.random().toString(36).substring(2);
+       sessionStorage.setItem('t_sid', sid);
+       const data = { path, timestamp: Date.now(), sid, ua: navigator.userAgent };
+       uploadString(logRef, JSON.stringify(data), 'raw', { contentType: 'application/json' }).catch(() => {});
     } catch (e) {}
   };
 
