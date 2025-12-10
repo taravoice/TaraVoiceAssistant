@@ -74,7 +74,7 @@ const initialContent: SiteContent = {
   customSections: [],
   images: initialImages,
   gallery: [],
-  updatedAt: Date.now()
+  updatedAt: 0
 };
 
 const SiteContext = createContext<SiteContextType | undefined>(undefined);
@@ -89,69 +89,56 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
-  // --- Fetch latest config directly, bypassing cache ---
+  // --- 1. Public Fetch (Fast, No Auth) ---
   const fetchPublicConfig = async () => {
     if (!bucketName) return null;
-
     const getDirectUrl = (path: string) =>
       `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(path)}?alt=media`;
 
     try {
-      // 1. Fetch pointer file (cache-busted)
       const pointerUrl = `${getDirectUrl('config/current.json')}&t=${Date.now()}`;
       const pointerRes = await fetch(pointerUrl, { cache: 'no-store' });
-      
-      if (!pointerRes.ok) {
-          // If 404, maybe config/site_config.json exists from legacy?
-          throw new Error("Pointer file not found");
-      }
+      if (!pointerRes.ok) throw new Error("Pointer fetch failed");
 
       const pointerData = await pointerRes.json();
       const versionFilename = pointerData.version;
-      // CRITICAL FIX: Default to 0, NOT Date.now(). 
-      // If we default to Date.now(), we might overwrite a valid local draft with empty cloud data.
-      const updatedAt = pointerData.updatedAt || 0; 
+      
+      if (!versionFilename) throw new Error("Invalid pointer");
+      console.log("🔥 HTTP Init: Found version:", versionFilename);
 
-      if (!versionFilename) throw new Error("Invalid pointer file");
-
-      console.log("🔥 Init: Found version:", versionFilename);
-
-      // 2. Fetch actual config file (cache-busted)
-      // We use the updatedAt from the pointer to fetch the exact version if possible, or bust cache.
       const configUrl = `${getDirectUrl(`config/${versionFilename}`)}&t=${Date.now()}`;
       const configRes = await fetch(configUrl, { cache: 'no-store' });
-      if (!configRes.ok) throw new Error("Config file missing");
+      if (!configRes.ok) throw new Error("Config fetch failed");
 
-      const configData = await configRes.json();
-
-      // 3. Add cache-busting to all image URLs in the object to ensure they load fresh
-      // This is purely for display purposes in the current session
-      const now = Date.now();
-      Object.keys(configData.images || {}).forEach(key => {
-        if (configData.images[key]) {
-           try {
-              const url = configData.images[key];
-              if (url.startsWith('http')) {
-                  const urlObj = new URL(url);
-                  // Only add timestamp if not present or to force update
-                  urlObj.searchParams.set('t', now.toString());
-                  configData.images[key] = urlObj.toString();
-              }
-           } catch(e) {}
-        }
-      });
-
-      return { ...configData, updatedAt };
-
+      return await configRes.json();
     } catch (e) {
-      console.warn("Could not fetch public config, falling back to legacy file:", e);
-      try {
-        const legacyUrl = `${getDirectUrl('config/site_config.json')}&t=${Date.now()}`;
-        const res = await fetch(legacyUrl, { cache: 'no-store' });
-        if (res.ok) return await res.json();
-      } catch (err) { }
+      console.warn("HTTP Init Failed:", e);
       return null;
     }
+  };
+
+  // --- 2. SDK Fetch (Fallback, Auth Required) ---
+  const fetchSDKConfig = async () => {
+    if (!storage) return null;
+    try {
+       await ensureAuth();
+       // Fetch pointer
+       const pointerRef = ref(storage, 'config/current.json');
+       const pointerUrl = await getDownloadURL(pointerRef);
+       const pointerRes = await fetch(`${pointerUrl}&t=${Date.now()}`);
+       const pointerData = await pointerRes.json();
+       
+       if (pointerData.version) {
+          console.log("🛡️ SDK Init: Found version:", pointerData.version);
+          const configRef = ref(storage, `config/${pointerData.version}`);
+          const configUrl = await getDownloadURL(configRef);
+          const configRes = await fetch(`${configUrl}&t=${Date.now()}`);
+          return await configRes.json();
+       }
+    } catch (e) {
+       console.warn("SDK Init Failed:", e);
+    }
+    return null;
   };
 
   // --- Initialize site ---
@@ -163,50 +150,53 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setIsStorageConfigured(true);
 
-    // Don't wait for auth to fetch public content
-    ensureAuth().catch(() => {});
+    // 1. Try Public HTTP Fetch first
+    let cloudConfig = await fetchPublicConfig();
 
-    const cloudConfig = await fetchPublicConfig();
-
-    if (cloudConfig) {
-      const localStr = localStorage.getItem('tara_site_config');
-      let localConfig = null;
-      if (localStr) {
-        try { localConfig = JSON.parse(localStr); } catch (e) { }
-      }
-
-      // LOGIC FIX: Compare properly. 
-      // If cloudConfig.updatedAt is 0 (missing), localConfig will likely be > 0, so Draft wins.
-      if (localConfig && (localConfig.updatedAt || 0) > (cloudConfig.updatedAt || 0)) {
-        console.log("📝 Init: Local draft is newer. Resuming draft.");
-        // Merge cloud gallery into local content just in case
-        setContent({ 
-            ...cloudConfig, 
-            ...localConfig, 
-            gallery: cloudConfig.gallery || [] 
-        });
-        setHasUnsavedChanges(true);
-      } else {
-        console.log("☁️ Init: Cloud is newer. Syncing.");
-        setContent({ ...initialContent, ...cloudConfig });
-        localStorage.setItem('tara_site_config', JSON.stringify({ ...initialContent, ...cloudConfig }));
-        setHasUnsavedChanges(false);
-      }
-    } else {
-      console.log("❌ Init: No cloud config found. Using defaults.");
+    // 2. If Public failed, try SDK (Authenticated)
+    if (!cloudConfig) {
+       cloudConfig = await fetchSDKConfig();
     }
 
-    // Load gallery images in background
+    // 3. Load Local Draft
+    const localStr = localStorage.getItem('tara_site_config');
+    let localConfig = null;
+    if (localStr) {
+      try { localConfig = JSON.parse(localStr); } catch (e) { }
+    }
+
+    if (cloudConfig) {
+       // Cloud Found: Decide between Cloud and Draft
+       if (localConfig && (localConfig.updatedAt || 0) > (cloudConfig.updatedAt || 0)) {
+         console.log("📝 Init: Local draft is newer. Resuming draft.");
+         setContent({ ...cloudConfig, ...localConfig, gallery: cloudConfig.gallery || [] });
+         setHasUnsavedChanges(true);
+       } else {
+         console.log("☁️ Init: Synced to Cloud.");
+         setContent({ ...initialContent, ...cloudConfig });
+         localStorage.setItem('tara_site_config', JSON.stringify({ ...initialContent, ...cloudConfig }));
+         setHasUnsavedChanges(false);
+       }
+    } else {
+       // No Cloud Data Available (Error/Offline) -> FORCE LOCAL FALLBACK
+       if (localConfig) {
+          console.log("⚠️ Init: Cloud unreachable. Forcing local draft.");
+          setContent({ ...initialContent, ...localConfig });
+          setHasUnsavedChanges(true); // Treat as unsaved since unverified
+       } else {
+          console.log("❌ Init: No data found anywhere.");
+       }
+    }
+
+    // Background Gallery Load
     setTimeout(async () => {
       try {
         await ensureAuth();
         if (!storage) return;
-
         const listRef = ref(storage, 'gallery/');
         const res = await listAll(listRef);
         const urls = await Promise.all(res.items.map(async r => {
           const u = await getDownloadURL(r);
-          // Append timestamp to gallery thumbnails to ensure admin sees latest
           return `${u}${u.includes('?') ? '&' : '?'}t=${Date.now()}`;
         }));
         setContent(prev => ({ ...prev, gallery: urls }));
@@ -300,15 +290,19 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
-    // Robust cleaning: remove 't' and 'nocache' but keep 'alt' and 'token'
+    // Robust URL cleaning: remove timestamps, but preserve Firebase 'alt=media' and 'token'
     let cleanUrl = url;
     try {
-       const urlObj = new URL(url);
-       // Ensure we remove old timestamps so the Publish timestamp takes precedence
-       urlObj.searchParams.delete('t');
-       urlObj.searchParams.delete('nocache');
-       // But KEEP the token and alt param!
-       cleanUrl = urlObj.toString();
+        if (url.includes('firebasestorage')) {
+            const urlObj = new URL(url);
+            urlObj.searchParams.delete('t'); // Remove cache buster
+            urlObj.searchParams.delete('nocache');
+            // Do NOT delete 'alt' or 'token'
+            cleanUrl = urlObj.toString();
+        } else {
+            // For external URLs (Unsplash), remove query params if needed or keep
+            cleanUrl = url.split('?')[0]; 
+        }
     } catch (e) { cleanUrl = url; }
 
     updateStateAndDraft(prev => ({
@@ -332,15 +326,13 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const ext = file.name.split('.').pop()?.toLowerCase();
         if (ext === 'png') mimeType = 'image/png';
         else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-        else if (ext === 'webp') mimeType = 'image/webp';
         else if (ext === 'svg') mimeType = 'image/svg+xml';
     }
 
-    const metadata = { contentType: mimeType, cacheControl: 'public, max-age=31536000' };
+    const metadata = { contentType: mimeType || 'image/jpeg', cacheControl: 'public, max-age=31536000' };
     const snap = await uploadBytes(storageRef, file, metadata);
     const url = await getDownloadURL(snap.ref);
     
-    // Add timestamp for immediate feedback in gallery UI
     const displayUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
     setContent(prev => ({ ...prev, gallery: [displayUrl, ...prev.gallery] }));
   };
@@ -349,14 +341,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      if (!storage) return;
      try {
        await ensureAuth();
-       // Try to extract path from URL
        let path = url;
        try {
            const urlObj = new URL(url);
            const p = urlObj.pathname.split('/o/')[1];
            if (p) path = decodeURIComponent(p);
        } catch(e) {}
-       
        const r = ref(storage, path);
        await deleteObject(r);
        setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
