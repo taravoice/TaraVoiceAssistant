@@ -44,6 +44,7 @@ interface SiteContextType {
   logout: () => void;
   changePassword: (newPassword: string) => void;
   isInitialized: boolean;
+  forceSync: () => Promise<void>;
 }
 
 // SMART DEFAULTS: Shown until Admin updates them in Cloud
@@ -181,6 +182,10 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const forceSync = async () => {
+     await saveToCloud(content);
+  };
+
   const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
     const time = Date.now();
     const updated = { 
@@ -316,7 +321,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       login, 
       logout, 
       changePassword,
-      isInitialized
+      isInitialized,
+      forceSync
     }}>
       {children}
     </SiteContext.Provider>
