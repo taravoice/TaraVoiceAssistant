@@ -1,12 +1,17 @@
+
 import React, { useRef, useState } from 'react';
 import { useSite } from '../../context/SiteContext';
 import { Button } from '../../components/Button';
-import { Upload, Trash2, Copy, AlertCircle, Loader2 } from 'lucide-react';
+import { Upload, Trash2, Copy, AlertCircle, Loader2, Wrench, CheckCircle2 } from 'lucide-react';
+import { storage } from '../../firebase';
+import { ref, listAll, updateMetadata, getMetadata } from 'firebase/storage';
 
 const Gallery: React.FC = () => {
   const { content, uploadToGallery, removeFromGallery, isStorageConfigured } = useSite();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isRepairing, setIsRepairing] = useState(false);
+  const [repairStatus, setRepairStatus] = useState<string | null>(null);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -35,6 +40,64 @@ const Gallery: React.FC = () => {
     }
   };
 
+  const handleSmartRepair = async () => {
+    if (!storage || !isStorageConfigured) return;
+    if (!confirm("This will scan all images in your gallery and fix missing metadata (Content-Type and Cache-Control). Continue?")) return;
+
+    setIsRepairing(true);
+    setRepairStatus("Scanning files...");
+    let fixedCount = 0;
+    let errorCount = 0;
+
+    try {
+       const galleryRef = ref(storage, 'gallery/');
+       const res = await listAll(galleryRef);
+       
+       for (const itemRef of res.items) {
+          try {
+             // 1. Get current metadata
+             const meta = await getMetadata(itemRef);
+             
+             // 2. Determine correct content type based on name
+             const name = itemRef.name.toLowerCase();
+             let contentType = meta.contentType;
+             
+             if (!contentType || contentType === 'application/octet-stream') {
+                if (name.endsWith('.png')) contentType = 'image/png';
+                else if (name.endsWith('.jpg') || name.endsWith('.jpeg')) contentType = 'image/jpeg';
+                else if (name.endsWith('.svg')) contentType = 'image/svg+xml';
+                else if (name.endsWith('.webp')) contentType = 'image/webp';
+             }
+
+             // 3. Check if repair is needed
+             const needsTypeFix = meta.contentType !== contentType;
+             const needsCacheFix = !meta.cacheControl;
+
+             if (needsTypeFix || needsCacheFix) {
+                setRepairStatus(`Fixing ${itemRef.name}...`);
+                await updateMetadata(itemRef, {
+                   contentType: contentType || 'image/jpeg',
+                   cacheControl: 'public, max-age=31536000',
+                   customMetadata: {
+                      ...meta.customMetadata,
+                      repairedAt: new Date().toISOString()
+                   }
+                });
+                fixedCount++;
+             }
+          } catch (e) {
+             console.error(`Failed to fix ${itemRef.name}`, e);
+             errorCount++;
+          }
+       }
+       setRepairStatus(`Done! Fixed ${fixedCount} files. (${errorCount} errors)`);
+    } catch (e: any) {
+       setRepairStatus(`Error: ${e.message}`);
+    } finally {
+       setIsRepairing(false);
+    }
+  };
+
   const copyToClipboard = (url: string) => {
     navigator.clipboard.writeText(url);
     alert("Image URL copied to clipboard!");
@@ -42,12 +105,26 @@ const Gallery: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Media Gallery</h1>
           <p className="text-slate-500">Upload and manage all your website images.</p>
         </div>
-        <div>
+        <div className="flex space-x-3">
+          {/* Repair Button */}
+          {isStorageConfigured && (
+             <Button 
+               variant="outline" 
+               onClick={handleSmartRepair} 
+               disabled={isRepairing}
+               className="border-amber-200 text-amber-700 hover:bg-amber-50"
+             >
+               {isRepairing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wrench className="w-4 h-4 mr-2" />}
+               {isRepairing ? 'Repairing...' : 'Run Smart Repair'}
+             </Button>
+          )}
+
+          {/* Upload Button */}
           <input 
             type="file" 
             ref={fileInputRef} 
@@ -68,6 +145,13 @@ const Gallery: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {repairStatus && (
+         <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg flex items-center animate-fade-in-down">
+            {isRepairing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+            {repairStatus}
+         </div>
+      )}
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         {content.gallery.length === 0 ? (
