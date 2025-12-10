@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Target, Lightbulb, Users, Zap } from 'lucide-react';
 import { useSite } from '../context/SiteContext';
@@ -5,6 +6,14 @@ import { useSite } from '../context/SiteContext';
 const About: React.FC = () => {
   const { content } = useSite();
   const customSections = content.customSections.filter(s => s.page === 'About');
+
+  const getBustedUrl = (url: string) => {
+    if (!url || url === '') return '';
+    if (url.startsWith('http')) {
+      return `${url}${url.includes('?') ? '&' : '?'}t=${content.updatedAt}`;
+    }
+    return url;
+  };
 
   return (
     <div className="bg-[#d9d9d9]">
@@ -44,9 +53,10 @@ const About: React.FC = () => {
         <div className="flex flex-col md:flex-row items-center gap-12">
            <div className="md:w-1/2">
               <img 
-                src="https://images.unsplash.com/photo-1552664730-d307ca884978?q=80&w=2070&auto=format&fit=crop" 
+                key={getBustedUrl(content.images.aboutTeam)}
+                src={getBustedUrl(content.images.aboutTeam)} 
                 alt="Team working" 
-                className="rounded-2xl shadow-lg"
+                className="rounded-2xl shadow-lg w-full h-auto object-cover"
               />
            </div>
            <div className="md:w-1/2 space-y-4">
@@ -75,9 +85,10 @@ const About: React.FC = () => {
         <div className="flex flex-col md:flex-row-reverse items-center gap-12">
            <div className="md:w-1/2">
               <img 
-                src="https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=1965&auto=format&fit=crop" 
+                key={getBustedUrl(content.images.aboutFuture)}
+                src={getBustedUrl(content.images.aboutFuture)} 
                 alt="AI Future" 
-                className="rounded-2xl shadow-lg"
+                className="rounded-2xl shadow-lg w-full h-auto object-cover"
               />
            </div>
            <div className="md:w-1/2 space-y-4">
@@ -103,7 +114,7 @@ const About: React.FC = () => {
                  </div>
                  {section.image && (
                    <div className="order-1 md:order-2">
-                      <img src={section.image} alt={section.title} className="rounded-2xl shadow-lg w-full h-auto object-cover" />
+                      <img src={getBustedUrl(section.image)} alt={section.title} className="rounded-2xl shadow-lg w-full h-auto object-cover" />
                    </div>
                  )}
               </div>
