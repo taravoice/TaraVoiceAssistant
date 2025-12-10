@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useSite } from '../../context/SiteContext';
 import { ImageGalleryModal } from '../../components/ImageGalleryModal';
-import { Info, AlertTriangle } from 'lucide-react';
+import { Info, AlertTriangle, ImageOff } from 'lucide-react';
 
 const imageSlots = [
   { key: 'logo', page: 'Global', section: 'Website Logo' },
@@ -91,9 +91,16 @@ const MediaManager: React.FC = () => {
                  <div className="col-span-3">
                    <div 
                      onClick={() => handleOpenGallery(slot.key)}
-                     className="relative aspect-[3/2] bg-slate-100 rounded-xl overflow-hidden cursor-pointer border-2 border-slate-200 hover:border-[#0097b2] transition-all"
+                     className="relative aspect-[3/2] bg-slate-100 rounded-xl overflow-hidden cursor-pointer border-2 border-slate-200 hover:border-[#0097b2] transition-all flex items-center justify-center"
                    >
-                     <img src={currentUrl} alt={slot.section} className="w-full h-full object-contain p-2" />
+                     {currentUrl ? (
+                       <img src={currentUrl} alt={slot.section} className="w-full h-full object-contain p-2" />
+                     ) : (
+                       <div className="text-center p-2">
+                         <ImageOff className="w-6 h-6 text-slate-300 mx-auto mb-1" />
+                         <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Empty</span>
+                       </div>
+                     )}
                      <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
                         <span className="text-xs font-bold bg-[#0097b2] px-3 py-1.5 rounded-full shadow-lg">Change Mapping</span>
                      </div>
