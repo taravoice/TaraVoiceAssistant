@@ -21,7 +21,7 @@ const ContentManager: React.FC = () => {
       id: Date.now().toString(),
       title: newSection.title,
       content: newSection.content,
-      image: newSection.image || "https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&q=80&w=1000",
+      image: newSection.image || "", 
       page: newSection.page
     });
     setNewSection({ title: '', content: '', image: '', page: 'Home' });
