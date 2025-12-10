@@ -74,7 +74,7 @@ const initialContent: SiteContent = {
   customSections: [],
   images: initialImages,
   gallery: [],
-  updatedAt: Date.now()
+  updatedAt: 0 // Initialize to 0 so any loaded content is newer
 };
 
 const SiteContext = createContext<SiteContextType | undefined>(undefined);
@@ -89,15 +89,16 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
-  // DIRECT HTTP FETCH STRATEGY
+  // DIRECT HTTP FETCH STRATEGY (Non-Blocking)
   const fetchPublicConfig = async () => {
     if (!bucketName) return null;
     
+    // Explicitly ask for alt=media to get file content, NOT metadata
     const getDirectUrl = (path: string) => 
        `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(path)}?alt=media`;
 
     try {
-        // 1. Fetch Pointer File (Cache-Busted)
+        // 1. Fetch Pointer File (Aggressive Cache-Busting)
         const pointerUrl = `${getDirectUrl('config/current.json')}&t=${Date.now()}`;
         const pointerRes = await fetch(pointerUrl, { cache: 'no-store' });
         
@@ -107,8 +108,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const versionFilename = pointerData.version;
 
         if (!versionFilename) throw new Error("Invalid pointer data");
-
-        console.log("🔥 Init: Found version:", versionFilename);
 
         // 2. Fetch Actual Config
         const configUrl = getDirectUrl(`config/${versionFilename}`);
@@ -126,67 +125,73 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (res.ok) return await res.json();
         } catch (err) {}
         
-        console.warn("Could not fetch public config:", e);
         return null;
     }
   };
 
   const initSite = useCallback(async () => {
-    // Check if we have API keys at all
-    if (!storage) {
-       console.warn("⚠️ Storage not configured.");
-       setIsInitialized(true);
-       return;
+    if (storage) {
+        setIsStorageConfigured(true);
+        // Attempt auth in background, don't await/block
+        ensureAuth().catch(() => {});
     }
-    setIsStorageConfigured(true);
 
-    // A. Start Auth in Background
-    ensureAuth().catch(() => {});
+    // A. Load Local Config (Draft)
+    const localStr = localStorage.getItem('tara_site_config');
+    let localConfig: SiteContent | null = null;
+    if (localStr) {
+        try { localConfig = JSON.parse(localStr); } catch(e) {}
+    }
 
-    // B. Load Content immediately via HTTP
+    // B. Load Cloud Config via Direct HTTP
     const cloudConfig = await fetchPublicConfig();
 
     if (cloudConfig) {
-        const localStr = localStorage.getItem('tara_site_config');
-        let localConfig = null;
-        if (localStr) {
-           try { localConfig = JSON.parse(localStr); } catch(e) {}
-        }
+        // IMPORTANT: If cloudConfig lacks a timestamp, default to 0 (Old).
+        // Do NOT default to Date.now(), or it will overwrite local drafts!
+        const cloudTimestamp = cloudConfig.updatedAt || 0;
 
         const cloudContent = {
              ...initialContent,
              ...cloudConfig,
              images: { ...initialContent.images, ...cloudConfig.images },
-             updatedAt: cloudConfig.updatedAt || Date.now(),
+             updatedAt: cloudTimestamp,
              gallery: content.gallery 
         };
 
-        // DRAFT LOGIC FIX:
-        // Only overwrite if Cloud is newer than Local.
-        // If Local has a timestamp > Cloud, it means we have unsaved work.
-        if (localConfig && (localConfig.updatedAt > (cloudContent.updatedAt || 0))) {
-             console.log("📝 Init: Found newer local draft. Restoring Draft.");
+        // C. Decision Logic: Cloud vs Local
+        // If Local Draft exists and is NEWER than cloud, keep local.
+        if (localConfig && (localConfig.updatedAt > cloudTimestamp)) {
+             console.log("📝 Init: Local draft is newer. Restoring Draft.");
              setContent({
-                 ...cloudContent, // Use cloud as base for structure
-                 ...localConfig,  // Override with local changes
-                 gallery: content.gallery // Keep gallery state
+                 ...cloudContent, 
+                 ...localConfig, // Overwrite with local changes
+                 gallery: content.gallery
              });
              setHasUnsavedChanges(true);
         } else {
-             console.log("☁️ Init: Using Cloud Config.");
+             console.log("☁️ Init: Synced from Cloud.");
              setContent(cloudContent);
+             // Update local mirror to match cloud so we don't have a stale 'draft'
              localStorage.setItem('tara_site_config', JSON.stringify(cloudContent));
              setHasUnsavedChanges(false);
         }
     } else {
-        console.log("❌ Init: No cloud config found. Using defaults.");
+        // D. Cloud Failed? Use Local if available
+        if (localConfig) {
+            console.warn("⚠️ Init: Cloud unreachable. Using Local Draft.");
+            setContent({ ...initialContent, ...localConfig });
+            setHasUnsavedChanges(true);
+        } else {
+            console.log("❌ Init: No config found. Using defaults.");
+        }
     }
 
-    // C. Load Gallery (Only if Auth succeeds later)
-    setTimeout(async () => {
-        try {
-            await ensureAuth(); 
-            if (storage) {
+    // E. Lazy Load Gallery
+    if (storage) {
+        setTimeout(async () => {
+            try {
+                await ensureAuth();
                 const listRef = ref(storage, 'gallery/');
                 const res = await listAll(listRef);
                 const urls = await Promise.all(res.items.map(async (r) => {
@@ -194,9 +199,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     return `${u}${u.includes('?') ? '&' : '?'}t=${Date.now()}`;
                 }));
                 setContent(prev => ({ ...prev, gallery: urls }));
-            }
-        } catch (e) { /* Not an admin, ignore */ }
-    }, 1000);
+            } catch (e) {}
+        }, 1000);
+    }
 
     setIsInitialized(true);
   }, []);
@@ -229,7 +234,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       cacheControl: 'no-cache, no-store, max-age=0'
     });
     
-    console.log("☁️ Published version:", versionFilename);
     setSyncError(null);
   }, []);
 
@@ -286,25 +290,27 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateImage = async (key: string, url: string) => {
     // Robust URL Cleaning
-    // Goal: Remove 't=' param but KEEP 'alt=media' and 'token='
+    // Remove query params (like 't') but PRESERVE 'alt=media' and 'token'
     let cleanUrl = url;
     
     try {
        const urlObj = new URL(url);
-       // Delete our custom params
-       urlObj.searchParams.delete('t');
-       urlObj.searchParams.delete('nocache');
+       const params = new URLSearchParams(urlObj.search);
        
-       // Ensure alt=media exists if it's a firebase storage URL
-       if (url.includes('firebasestorage.googleapis.com')) {
-           if (!urlObj.searchParams.has('alt')) {
-               urlObj.searchParams.set('alt', 'media');
-           }
+       // Remove cache busters
+       params.delete('t');
+       params.delete('nocache');
+
+       // CRITICAL: Ensure alt=media is present for Firebase URLs
+       if (url.includes('firebasestorage.googleapis.com') && !params.has('alt')) {
+           params.set('alt', 'media');
        }
+       
+       urlObj.search = params.toString();
        cleanUrl = urlObj.toString();
     } catch (e) {
-       // Fallback for relative URLs or errors
-       cleanUrl = url; 
+       // If URL parsing fails, stick with original
+       console.warn("URL parsing failed, using original", e);
     }
 
     updateStateAndDraft(prev => ({
@@ -329,8 +335,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const ext = file.name.split('.').pop()?.toLowerCase();
         if (ext === 'png') mimeType = 'image/png';
         else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-        else if (ext === 'webp') mimeType = 'image/webp';
-        else if (ext === 'svg') mimeType = 'image/svg+xml';
     }
 
     const metadata = {
@@ -341,7 +345,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const snap = await uploadBytes(storageRef, file, metadata);
     const url = await getDownloadURL(snap.ref);
     
-    // Add timestamp for immediate UI refresh
+    // Add timestamp for immediate UI refresh in Gallery
     const displayUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
     
     setContent(prev => ({ ...prev, gallery: [displayUrl, ...prev.gallery] }));
@@ -351,8 +355,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      if (!storage) return;
      try {
        await ensureAuth();
-       const r = ref(storage, url);
-       await deleteObject(r);
+       // Only try to delete if it's a firebase URL
+       if (url.includes('firebasestorage.googleapis.com')) {
+          // Need to reconstruct ref from URL
+          const r = ref(storage, url); 
+          await deleteObject(r);
+       }
        setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
      } catch (e) {}
   };
@@ -366,17 +374,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
   const logout = () => setIsAuthenticated(false);
   const changePassword = (pw: string) => localStorage.setItem('tara_admin_pw', pw);
-
-  const logVisit = async (path: string) => {
-    if (!storage || path.startsWith('/admin')) return;
-    try {
-       const logRef = ref(storage, `analytics/logs/${Date.now()}.json`);
-       const sid = sessionStorage.getItem('t_sid') || Math.random().toString(36).substring(2);
-       sessionStorage.setItem('t_sid', sid);
-       const data = { path, timestamp: Date.now(), sid, ua: navigator.userAgent };
-       uploadString(logRef, JSON.stringify(data), 'raw', { contentType: 'application/json' }).catch(() => {});
-    } catch (e) {}
-  };
+  const logVisit = async (path: string) => {}; 
 
   return (
     <SiteContext.Provider value={{ 
