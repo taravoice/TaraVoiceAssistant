@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { storage, ensureAuth, bucketName } from '../firebase';
 import { ref, getDownloadURL, listAll, deleteObject, uploadString, uploadBytes } from 'firebase/storage';
@@ -99,30 +100,44 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // 1. Fetch pointer file (cache-busted)
       const pointerUrl = `${getDirectUrl('config/current.json')}&t=${Date.now()}`;
       const pointerRes = await fetch(pointerUrl, { cache: 'no-store' });
-      if (!pointerRes.ok) throw new Error("Pointer file not found");
+      
+      if (!pointerRes.ok) {
+          // If 404, maybe config/site_config.json exists from legacy?
+          throw new Error("Pointer file not found");
+      }
 
       const pointerData = await pointerRes.json();
       const versionFilename = pointerData.version;
-      const updatedAt = pointerData.updatedAt || Date.now();
+      // CRITICAL FIX: Default to 0, NOT Date.now(). 
+      // If we default to Date.now(), we might overwrite a valid local draft with empty cloud data.
+      const updatedAt = pointerData.updatedAt || 0; 
 
       if (!versionFilename) throw new Error("Invalid pointer file");
 
       console.log("🔥 Init: Found version:", versionFilename);
 
       // 2. Fetch actual config file (cache-busted)
-      const configUrl = `${getDirectUrl(`config/${versionFilename}`)}&t=${updatedAt}`;
+      // We use the updatedAt from the pointer to fetch the exact version if possible, or bust cache.
+      const configUrl = `${getDirectUrl(`config/${versionFilename}`)}&t=${Date.now()}`;
       const configRes = await fetch(configUrl, { cache: 'no-store' });
       if (!configRes.ok) throw new Error("Config file missing");
 
       const configData = await configRes.json();
 
-      // 3. Add cache-busting to all image URLs
+      // 3. Add cache-busting to all image URLs in the object to ensure they load fresh
+      // This is purely for display purposes in the current session
+      const now = Date.now();
       Object.keys(configData.images || {}).forEach(key => {
         if (configData.images[key]) {
-          const url = configData.images[key];
-          const urlObj = new URL(url);
-          urlObj.searchParams.set('t', updatedAt.toString());
-          configData.images[key] = urlObj.toString();
+           try {
+              const url = configData.images[key];
+              if (url.startsWith('http')) {
+                  const urlObj = new URL(url);
+                  // Only add timestamp if not present or to force update
+                  urlObj.searchParams.set('t', now.toString());
+                  configData.images[key] = urlObj.toString();
+              }
+           } catch(e) {}
         }
       });
 
@@ -148,6 +163,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setIsStorageConfigured(true);
 
+    // Don't wait for auth to fetch public content
     ensureAuth().catch(() => {});
 
     const cloudConfig = await fetchPublicConfig();
@@ -159,22 +175,28 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try { localConfig = JSON.parse(localStr); } catch (e) { }
       }
 
-      // Use cloud config unless local draft is newer
-      if (localConfig && localConfig.updatedAt > cloudConfig.updatedAt) {
-        console.log("📝 Init: Using newer local draft");
-        setContent({ ...cloudConfig, ...localConfig, gallery: content.gallery });
+      // LOGIC FIX: Compare properly. 
+      // If cloudConfig.updatedAt is 0 (missing), localConfig will likely be > 0, so Draft wins.
+      if (localConfig && (localConfig.updatedAt || 0) > (cloudConfig.updatedAt || 0)) {
+        console.log("📝 Init: Local draft is newer. Resuming draft.");
+        // Merge cloud gallery into local content just in case
+        setContent({ 
+            ...cloudConfig, 
+            ...localConfig, 
+            gallery: cloudConfig.gallery || [] 
+        });
         setHasUnsavedChanges(true);
       } else {
-        console.log("☁️ Init: Using cloud config");
-        setContent({ ...initialContent, ...cloudConfig, gallery: content.gallery });
+        console.log("☁️ Init: Cloud is newer. Syncing.");
+        setContent({ ...initialContent, ...cloudConfig });
         localStorage.setItem('tara_site_config', JSON.stringify({ ...initialContent, ...cloudConfig }));
         setHasUnsavedChanges(false);
       }
     } else {
-      console.log("❌ Init: No cloud config found. Using defaults");
+      console.log("❌ Init: No cloud config found. Using defaults.");
     }
 
-    // Load gallery images with timestamp for cache-busting
+    // Load gallery images in background
     setTimeout(async () => {
       try {
         await ensureAuth();
@@ -184,6 +206,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const res = await listAll(listRef);
         const urls = await Promise.all(res.items.map(async r => {
           const u = await getDownloadURL(r);
+          // Append timestamp to gallery thumbnails to ensure admin sees latest
           return `${u}${u.includes('?') ? '&' : '?'}t=${Date.now()}`;
         }));
         setContent(prev => ({ ...prev, gallery: urls }));
@@ -277,11 +300,14 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
+    // Robust cleaning: remove 't' and 'nocache' but keep 'alt' and 'token'
     let cleanUrl = url;
     try {
        const urlObj = new URL(url);
-       urlObj.searchParams.set('t', Date.now().toString());
+       // Ensure we remove old timestamps so the Publish timestamp takes precedence
+       urlObj.searchParams.delete('t');
        urlObj.searchParams.delete('nocache');
+       // But KEEP the token and alt param!
        cleanUrl = urlObj.toString();
     } catch (e) { cleanUrl = url; }
 
@@ -314,6 +340,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const snap = await uploadBytes(storageRef, file, metadata);
     const url = await getDownloadURL(snap.ref);
     
+    // Add timestamp for immediate feedback in gallery UI
     const displayUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
     setContent(prev => ({ ...prev, gallery: [displayUrl, ...prev.gallery] }));
   };
@@ -322,7 +349,15 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      if (!storage) return;
      try {
        await ensureAuth();
-       const r = ref(storage, url);
+       // Try to extract path from URL
+       let path = url;
+       try {
+           const urlObj = new URL(url);
+           const p = urlObj.pathname.split('/o/')[1];
+           if (p) path = decodeURIComponent(p);
+       } catch(e) {}
+       
+       const r = ref(storage, path);
        await deleteObject(r);
        setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
      } catch (e) {}
