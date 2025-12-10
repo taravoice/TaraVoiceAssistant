@@ -1,8 +1,9 @@
-
 // Use namespace imports to resolve named export missing member resolution issues in standard modular firebase
-import * as firebaseApp from 'firebase/app';
-import { getStorage, FirebaseStorage } from 'firebase/storage';
-import * as firebaseAuth from 'firebase/auth';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getStorage } from 'firebase/storage';
+import type { FirebaseStorage } from 'firebase/storage';
+import { getAuth, signInAnonymously } from 'firebase/auth';
+import type { Auth } from 'firebase/auth';
 
 const getEnv = (key: string) => {
   if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
@@ -22,7 +23,7 @@ if (bucket) {
 }
 
 let storage: FirebaseStorage | null = null;
-let auth: any = null;
+let auth: Auth | null = null;
 
 if (apiKey && bucket) {
   const firebaseConfig = {
@@ -35,10 +36,10 @@ if (apiKey && bucket) {
   };
 
   try {
-    // Initialize application using singleton check from the app namespace
-    const app = firebaseApp.getApps().length === 0 ? firebaseApp.initializeApp(firebaseConfig) : firebaseApp.getApp();
+    // Initialize application using named exports
+    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     storage = getStorage(app);
-    auth = firebaseAuth.getAuth(app);
+    auth = getAuth(app);
     console.log("🔥 Firebase: Connected to Bucket:", bucket);
   } catch (err) {
     console.error("🔥 Firebase: Initialization failed.", err);
@@ -48,8 +49,8 @@ if (apiKey && bucket) {
 export const ensureAuth = async () => {
   if (auth && !auth.currentUser) {
     try {
-      // Use modular signInAnonymously from the auth namespace
-      await firebaseAuth.signInAnonymously(auth);
+      // Use modular signInAnonymously
+      await signInAnonymously(auth);
     } catch (e) {
       console.error("🔥 Firebase: Anonymous Auth Blocked.", e);
       throw e;
