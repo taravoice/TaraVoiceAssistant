@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Calendar, Network, Headset, RefreshCw, BarChart, Bot } from 'lucide-react';
 import { Button } from '../components/Button';
@@ -74,24 +75,26 @@ const Features: React.FC = () => {
             const currentImg = getBustedUrl(feature.img);
             return (
               <div key={feature.id} className={`flex flex-col ${index % 2 === 0 ? 'lg:flex-row' : 'lg:flex-row-reverse'} items-center gap-12`}>
-                <div className="lg:w-1/2 space-y-6">
+                <div className={`${currentImg ? 'lg:w-1/2' : 'w-full'} space-y-6`}>
                   <div className="w-14 h-14 bg-[#0097b2]/10 rounded-2xl flex items-center justify-center text-[#0097b2]">
                     <feature.icon className="w-7 h-7" />
                   </div>
                   <h2 className="text-3xl font-bold text-slate-900">{feature.title}</h2>
                   <p className="text-lg text-slate-600 leading-relaxed">{feature.desc}</p>
                 </div>
-                <div className="lg:w-1/2">
-                  <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-slate-200 group">
-                    <div className="absolute inset-0 bg-[#0097b2]/10 group-hover:bg-transparent transition-colors duration-500"></div>
-                    <img 
-                      key={currentImg}
-                      src={currentImg} 
-                      alt={feature.title} 
-                      className="w-full h-auto transform group-hover:scale-105 transition-transform duration-700 object-cover"
-                    />
+                {currentImg && (
+                  <div className="lg:w-1/2">
+                    <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-slate-200 group">
+                      <div className="absolute inset-0 bg-[#0097b2]/10 group-hover:bg-transparent transition-colors duration-500"></div>
+                      <img 
+                        key={currentImg}
+                        src={currentImg} 
+                        alt={feature.title} 
+                        className="w-full h-auto transform group-hover:scale-105 transition-transform duration-700 object-cover"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             );
           })}
