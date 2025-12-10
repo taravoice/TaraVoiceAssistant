@@ -111,18 +111,17 @@ const Gallery: React.FC = () => {
           <p className="text-slate-500">Upload and manage all your website images.</p>
         </div>
         <div className="flex space-x-3">
-          {/* Repair Button */}
-          {isStorageConfigured && (
-             <Button 
-               variant="outline" 
-               onClick={handleSmartRepair} 
-               disabled={isRepairing}
-               className="border-amber-200 text-amber-700 hover:bg-amber-50"
-             >
-               {isRepairing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wrench className="w-4 h-4 mr-2" />}
-               {isRepairing ? 'Repairing...' : 'Run Smart Repair'}
-             </Button>
-          )}
+          {/* Repair Button - Always visible now, just disabled if not configured */}
+           <Button 
+             variant="outline" 
+             onClick={handleSmartRepair} 
+             disabled={isRepairing || !isStorageConfigured}
+             className="border-amber-200 text-amber-700 hover:bg-amber-50"
+             title={!isStorageConfigured ? "Storage not connected" : "Fix missing metadata"}
+           >
+             {isRepairing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wrench className="w-4 h-4 mr-2" />}
+             {isRepairing ? 'Repairing...' : 'Run Smart Repair'}
+           </Button>
 
           {/* Upload Button */}
           <input 
