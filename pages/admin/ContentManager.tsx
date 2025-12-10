@@ -1,7 +1,8 @@
+
 import React, { useState } from 'react';
 import { useSite, CustomSection } from '../../context/SiteContext';
 import { Button } from '../../components/Button';
-import { Plus, Trash2, Save, Image as ImageIcon } from 'lucide-react';
+import { Plus, Trash2, Image as ImageIcon } from 'lucide-react';
 import { ImageGalleryModal } from '../../components/ImageGalleryModal';
 
 const ContentManager: React.FC = () => {
@@ -34,7 +35,7 @@ const ContentManager: React.FC = () => {
   const pages = ['Home', 'About', 'Features', 'Pricing', 'Contact'];
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto">
+    <div className="space-y-8 max-w-4xl mx-auto pb-12">
       <div>
         <h1 className="text-3xl font-bold text-slate-900">Content Editor</h1>
         <p className="text-slate-500">Edit text and manage custom sections across the site.</p>
@@ -195,19 +196,10 @@ const ContentManager: React.FC = () => {
              </div>
 
              <Button onClick={handleAddSection} disabled={!newSection.title}>
-               Add Section to Website
+               Add Section to Draft
              </Button>
           </div>
         </div>
-      </div>
-
-      <div className="flex justify-end sticky bottom-6">
-         <div className="bg-white p-2 rounded-lg shadow-lg border border-slate-200">
-            <Button size="lg" className="flex items-center">
-               <Save className="w-5 h-5 mr-2" />
-               Changes Saved Locally
-            </Button>
-         </div>
       </div>
 
       <ImageGalleryModal 
