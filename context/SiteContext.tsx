@@ -39,6 +39,7 @@ interface SiteContextType {
   logVisit: (path: string) => Promise<void>;
   isAuthenticated: boolean;
   isStorageConfigured: boolean;
+  syncError: string | null;
   login: (password: string) => boolean;
   logout: () => void;
   changePassword: (newPassword: string) => void;
@@ -81,6 +82,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isStorageConfigured, setIsStorageConfigured] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   
   const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
@@ -155,8 +157,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveToCloud = useCallback(async (newContent: SiteContent) => {
     if (!storage) {
-      // CRITICAL FIX: Throw error if storage is missing so UI can alert user
-      throw new Error("Cloud Sync Failed: Storage is not configured. Please check Vercel Environment Variables.");
+      const msg = "Cloud Sync Failed: Storage is not configured in environment variables.";
+      setSyncError(msg);
+      throw new Error(msg);
     }
     try {
       await ensureAuth();
@@ -170,9 +173,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cacheControl: 'no-cache, no-store, must-revalidate'
       });
       console.log("☁️ SITE CONTEXT: Save success.");
-    } catch (e) {
+      setSyncError(null);
+    } catch (e: any) {
       console.error("☁️ SITE CONTEXT: Broadcast failed.", e);
-      throw e; // Propagate error so UI can show alert
+      setSyncError(e.message || "Unknown Cloud Sync Error");
+      throw e; 
     }
   }, []);
 
@@ -186,7 +191,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     setContent(updated);
     localStorage.setItem('tara_site_config', JSON.stringify(updated));
-    await saveToCloud(updated);
+    try {
+      await saveToCloud(updated);
+    } catch (e) {
+      // Catch here so inputs don't crash, but syncError state is set
+      console.warn("Background save failed");
+    }
   };
 
   const addCustomSection = async (section: CustomSection) => {
@@ -199,7 +209,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     setContent(updated);
     localStorage.setItem('tara_site_config', JSON.stringify(updated));
-    await saveToCloud(updated);
+    try {
+      await saveToCloud(updated);
+    } catch (e) {
+      console.warn("Background save failed");
+    }
   };
 
   const removeCustomSection = async (id: string) => {
@@ -212,7 +226,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     setContent(updated);
     localStorage.setItem('tara_site_config', JSON.stringify(updated));
-    await saveToCloud(updated);
+    try {
+      await saveToCloud(updated);
+    } catch (e) {
+      console.warn("Background save failed");
+    }
   };
 
   const updateImage = async (key: string, url: string) => {
@@ -228,6 +246,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     setContent(updated);
     localStorage.setItem('tara_site_config', JSON.stringify(updated));
+    // Media updates should propagate error to caller (Spinner)
     await saveToCloud(updated);
   };
 
@@ -292,7 +311,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       removeFromGallery, 
       logVisit, 
       isAuthenticated, 
-      isStorageConfigured, 
+      isStorageConfigured,
+      syncError, 
       login, 
       logout, 
       changePassword,
