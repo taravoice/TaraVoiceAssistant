@@ -89,193 +89,148 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
+  // DIRECT HTTP FETCH STRATEGY
+  const fetchPublicConfig = async () => {
+    if (!bucketName) return null;
+    
+    const getDirectUrl = (path: string) => 
+       `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(path)}?alt=media`;
+
+    try {
+        // 1. Fetch Pointer File (Cache-Busted)
+        const pointerUrl = `${getDirectUrl('config/current.json')}&t=${Date.now()}`;
+        const pointerRes = await fetch(pointerUrl, { cache: 'no-store' });
+        
+        if (!pointerRes.ok) throw new Error("Pointer not found");
+        
+        const pointerData = await pointerRes.json();
+        const versionFilename = pointerData.version;
+
+        if (!versionFilename) throw new Error("Invalid pointer data");
+
+        console.log("🔥 Init: Found version:", versionFilename);
+
+        // 2. Fetch Actual Config
+        const configUrl = getDirectUrl(`config/${versionFilename}`);
+        const configRes = await fetch(configUrl);
+        
+        if (!configRes.ok) throw new Error("Config file missing");
+        
+        return await configRes.json();
+
+    } catch (e) {
+        // 3. Fallback: Try legacy site_config.json
+        try {
+            const legacyUrl = `${getDirectUrl('config/site_config.json')}&t=${Date.now()}`;
+            const res = await fetch(legacyUrl);
+            if (res.ok) return await res.json();
+        } catch (err) {}
+        
+        console.warn("Could not fetch public config:", e);
+        return null;
+    }
+  };
+
   const initSite = useCallback(async () => {
-    // 1. Basic configuration check
+    // Check if we have API keys at all
     if (!storage) {
-      console.warn("⚠️ Firebase Storage is NOT initialized. Check API keys.");
-      setIsInitialized(true);
-      return;
+       console.warn("⚠️ Storage not configured.");
+       setIsInitialized(true);
+       return;
     }
     setIsStorageConfigured(true);
 
-    try {
-      // NON-BLOCKING AUTH: We do NOT await this.
-      // We start the auth process in background but immediately try to fetch public config.
-      // This prevents the site from hanging if Auth is blocked or slow.
-      ensureAuth().catch(e => console.warn("Background Auth check failed (harmless for visitors):", e));
-      
-      let cloudConfig = null;
+    // A. Start Auth in Background
+    ensureAuth().catch(() => {});
 
-      // 2. FETCH POINTER: Try to get the pointer URL via SDK or Direct Fallback
-      let pointerUrl = '';
-      try {
-         // Try SDK first (handles tokens)
-         const pointerRef = ref(storage, 'config/current.json');
-         pointerUrl = await getDownloadURL(pointerRef);
-      } catch (e) {
-         // Fallback: Construct Direct URL manually if SDK fails (e.g. Script Blocked)
-         // This assumes public read access is enabled in rules.
-         if (bucketName) {
-            pointerUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fcurrent.json?alt=media`;
-         }
-      }
+    // B. Load Content immediately via HTTP
+    const cloudConfig = await fetchPublicConfig();
 
-      if (pointerUrl) {
-         try {
-            // Aggressive Cache Busting
-            const cacheBustedUrl = `${pointerUrl}${pointerUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
-            const pointerRes = await fetch(cacheBustedUrl, { cache: 'no-store' });
-            
-            if (pointerRes.ok) {
-                const pointerData = await pointerRes.json();
-                if (pointerData.version) {
-                    console.log("🔥 Init: Found pointer version:", pointerData.version);
-                    
-                    // Fetch the actual versioned config file
-                    // We can use the same Direct URL strategy for the config file
-                    let versionUrl = '';
-                    try {
-                        const versionRef = ref(storage, `config/${pointerData.version}`);
-                        versionUrl = await getDownloadURL(versionRef);
-                    } catch (e) {
-                        if (bucketName) {
-                            const encodedName = encodeURIComponent(`config/${pointerData.version}`);
-                            versionUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodedName}?alt=media`;
-                        }
-                    }
-
-                    if (versionUrl) {
-                        const configRes = await fetch(versionUrl);
-                        if (configRes.ok) {
-                            cloudConfig = await configRes.json();
-                        }
-                    }
-                }
-            }
-         } catch (e) {
-             console.warn("Pointer fetch failed", e);
-         }
-      }
-
-      // 3. Fallback: Legacy site_config.json if pointer failed
-      if (!cloudConfig) {
-         try {
-            const legacyRef = ref(storage, 'config/site_config.json');
-            const legacyUrl = await getDownloadURL(legacyRef);
-            const res = await fetch(`${legacyUrl}${legacyUrl.includes('?') ? '&' : '?'}t=${Date.now()}`);
-            if (res.ok) cloudConfig = await res.json();
-         } catch(e) { /* Ignore */ }
-      }
-      
-      // 4. Apply Configuration
-      if (cloudConfig) {
+    if (cloudConfig) {
         const localStr = localStorage.getItem('tara_site_config');
         let localConfig = null;
         if (localStr) {
            try { localConfig = JSON.parse(localStr); } catch(e) {}
         }
 
-        // Only use local draft if we are the Admin AND it's newer
-        // For visitors, we ALWAYS enforce cloud config to avoid stale state
-        const isLocalNewer = isAuthenticated && localConfig && (localConfig.updatedAt > (cloudConfig.updatedAt || 0));
-        
-        if (isLocalNewer) {
-           console.log("📝 SITE CONTEXT: Local draft is newer. Resuming draft.");
-           setContent(prev => ({ ...prev, ...localConfig, gallery: prev.gallery }));
-           setHasUnsavedChanges(true);
-        } else {
-           console.log("☁️ SITE CONTEXT: Synced to Cloud Config.");
-           const updated = {
+        const cloudContent = {
              ...initialContent,
              ...cloudConfig,
-             // Merge images carefully to avoid losing keys
              images: { ...initialContent.images, ...cloudConfig.images },
              updatedAt: cloudConfig.updatedAt || Date.now(),
              gallery: content.gallery 
-           };
-           setContent(updated);
-           localStorage.setItem('tara_site_config', JSON.stringify(updated));
-           setHasUnsavedChanges(false);
+        };
+
+        // DRAFT LOGIC FIX:
+        // Only overwrite if Cloud is newer than Local.
+        // If Local has a timestamp > Cloud, it means we have unsaved work.
+        if (localConfig && (localConfig.updatedAt > (cloudContent.updatedAt || 0))) {
+             console.log("📝 Init: Found newer local draft. Restoring Draft.");
+             setContent({
+                 ...cloudContent, // Use cloud as base for structure
+                 ...localConfig,  // Override with local changes
+                 gallery: content.gallery // Keep gallery state
+             });
+             setHasUnsavedChanges(true);
+        } else {
+             console.log("☁️ Init: Using Cloud Config.");
+             setContent(cloudContent);
+             localStorage.setItem('tara_site_config', JSON.stringify(cloudContent));
+             setHasUnsavedChanges(false);
         }
-      } else {
-        console.error("❌ Init: Failed to load any configuration.");
-      }
-
-    } catch (err) {
-      console.warn("☁️ SITE CONTEXT: Fatal init error.", err);
+    } else {
+        console.log("❌ Init: No cloud config found. Using defaults.");
     }
 
-    // 5. Load Gallery (Admin Only / Background)
-    // We wrap this separately so it doesn't block the main content
-    try {
-      if (isAuthenticated) {
-          const galleryListRef = ref(storage, 'gallery/');
-          const res = await listAll(galleryListRef);
-          // Sort by name desc (assuming timestamp prefix)
-          const sortedItems = res.items.sort((a, b) => b.name.localeCompare(a.name)); 
-          
-          const urls = await Promise.all(sortedItems.map(async (r) => {
-             const u = await getDownloadURL(r);
-             return `${u}${u.includes('?') ? '&' : '?'}t=${Date.now()}`;
-          }));
-          
-          setContent(prev => ({ ...prev, gallery: urls }));
-      }
-    } catch (e) {
-       // Silent fail for gallery
-    }
+    // C. Load Gallery (Only if Auth succeeds later)
+    setTimeout(async () => {
+        try {
+            await ensureAuth(); 
+            if (storage) {
+                const listRef = ref(storage, 'gallery/');
+                const res = await listAll(listRef);
+                const urls = await Promise.all(res.items.map(async (r) => {
+                    const u = await getDownloadURL(r);
+                    return `${u}${u.includes('?') ? '&' : '?'}t=${Date.now()}`;
+                }));
+                setContent(prev => ({ ...prev, gallery: urls }));
+            }
+        } catch (e) { /* Not an admin, ignore */ }
+    }, 1000);
 
     setIsInitialized(true);
-  }, [isAuthenticated]);
+  }, []);
 
   useEffect(() => {
     initSite();
   }, [initSite]);
 
   const saveToCloud = useCallback(async (newContent: SiteContent) => {
-    if (!storage) {
-      const msg = "Cloud Sync Failed: Storage is not configured.";
-      setSyncError(msg);
-      throw new Error(msg);
-    }
-    try {
-      await ensureAuth();
-      const { gallery, ...saveData } = newContent;
-      const timestamp = Date.now();
-      
-      // 1. Versioned Config File
-      const versionFilename = `site_config_v_${timestamp}.json`;
-      const versionRef = ref(storage, `config/${versionFilename}`);
-      
-      await uploadString(versionRef, JSON.stringify(saveData), 'raw', {
-        contentType: 'application/json',
-        cacheControl: 'public, max-age=31536000',
-        customMetadata: { type: 'config', version: String(timestamp) }
-      });
+    if (!storage) throw new Error("Storage not configured.");
+    
+    await ensureAuth();
+    const { gallery, ...saveData } = newContent;
+    const timestamp = Date.now();
+    
+    // 1. Versioned Config
+    const versionFilename = `site_config_v_${timestamp}.json`;
+    const versionRef = ref(storage, `config/${versionFilename}`);
+    
+    await uploadString(versionRef, JSON.stringify(saveData), 'raw', {
+      contentType: 'application/json',
+      cacheControl: 'public, max-age=31536000',
+      customMetadata: { version: String(timestamp) }
+    });
 
-      // 2. Pointer File
-      const pointerRef = ref(storage, 'config/current.json');
-      await uploadString(pointerRef, JSON.stringify({ version: versionFilename, updatedAt: timestamp }), 'raw', {
-        contentType: 'application/json',
-        cacheControl: 'no-cache, no-store, max-age=0',
-        customMetadata: { type: 'pointer', updated: new Date().toISOString() }
-      });
-
-      // 3. Legacy Backup
-      const legacyRef = ref(storage, 'config/site_config.json');
-      await uploadString(legacyRef, JSON.stringify(saveData), 'raw', {
-        contentType: 'application/json',
-        cacheControl: 'no-cache',
-        customMetadata: { type: 'legacy_config' }
-      });
-      
-      console.log("☁️ SITE CONTEXT: Publish success.");
-      setSyncError(null);
-    } catch (e: any) {
-      console.error("☁️ SITE CONTEXT: Publish failed.", e);
-      setSyncError(e.message || "Unknown Cloud Sync Error");
-      throw e; 
-    }
+    // 2. Pointer
+    const pointerRef = ref(storage, 'config/current.json');
+    await uploadString(pointerRef, JSON.stringify({ version: versionFilename, updatedAt: timestamp }), 'raw', {
+      contentType: 'application/json',
+      cacheControl: 'no-cache, no-store, max-age=0'
+    });
+    
+    console.log("☁️ Published version:", versionFilename);
+    setSyncError(null);
   }, []);
 
   const publishSite = async () => {
@@ -288,7 +243,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
        ...content,
        updatedAt: timestamp
      };
+     
      await saveToCloud(contentToPublish);
+     
      setContent(contentToPublish);
      setHasUnsavedChanges(false);
      localStorage.setItem('tara_site_config', JSON.stringify(contentToPublish));
@@ -328,29 +285,26 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
-    // Robust URL Cleaning: Remove ONLY the 't' and 'nocache' params we added.
-    // We do NOT use URLSearchParams because it can sometimes re-encode chars and break tokens.
+    // Robust URL Cleaning
+    // Goal: Remove 't=' param but KEEP 'alt=media' and 'token='
     let cleanUrl = url;
-
+    
     try {
-        // Regex to safely remove &t=... or ?t=... without touching other params
-        // Replaces ?t=123 with ? (or empty if it was the only param)
-        // Replaces &t=123 with nothing
-        cleanUrl = cleanUrl
-            .replace(/([?&])t=\d+/, '$1')
-            .replace(/([?&])nocache=\d+/, '$1');
-        
-        // Clean up any double ampersands or trailing separators caused by the replacement
-        cleanUrl = cleanUrl
-            .replace(/&&/g, '&')
-            .replace(/[?&]$/, ''); // Remove trailing ? or &
-            
-        // If we removed the first param (e.g. ?t=...), ensure subsequent params start with ? not &
-        if (cleanUrl.includes('firebasestorage') && cleanUrl.indexOf('?') === -1 && cleanUrl.indexOf('&') !== -1) {
-            cleanUrl = cleanUrl.replace('&', '?');
-        }
+       const urlObj = new URL(url);
+       // Delete our custom params
+       urlObj.searchParams.delete('t');
+       urlObj.searchParams.delete('nocache');
+       
+       // Ensure alt=media exists if it's a firebase storage URL
+       if (url.includes('firebasestorage.googleapis.com')) {
+           if (!urlObj.searchParams.has('alt')) {
+               urlObj.searchParams.set('alt', 'media');
+           }
+       }
+       cleanUrl = urlObj.toString();
     } catch (e) {
-        console.warn("URL cleaning failed, using raw", e);
+       // Fallback for relative URLs or errors
+       cleanUrl = url; 
     }
 
     updateStateAndDraft(prev => ({
@@ -360,59 +314,47 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   };
 
-  const forceSync = async () => {
-     await publishSite();
-  };
+  const forceSync = async () => { await publishSite(); };
 
   const uploadToGallery = async (file: File) => {
     if (!storage) throw new Error("Storage not configured");
-    try {
-      await ensureAuth();
-      const path = `gallery/${Date.now()}_${file.name}`;
-      const storageRef = ref(storage, path);
-      
-      let mimeType = file.type;
-      if (!mimeType) {
-         const ext = file.name.split('.').pop()?.toLowerCase();
-         if (ext === 'png') mimeType = 'image/png';
-         else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-         else if (ext === 'webp') mimeType = 'image/webp';
-         else if (ext === 'svg') mimeType = 'image/svg+xml';
-         else mimeType = 'application/octet-stream';
-      }
+    await ensureAuth();
+    
+    const path = `gallery/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+    const storageRef = ref(storage, path);
+    
+    // Auto-detect mime type
+    let mimeType = file.type;
+    if (!mimeType || mimeType === 'application/octet-stream') {
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        if (ext === 'png') mimeType = 'image/png';
+        else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+        else if (ext === 'webp') mimeType = 'image/webp';
+        else if (ext === 'svg') mimeType = 'image/svg+xml';
+    }
 
-      const metadata = {
+    const metadata = {
         contentType: mimeType,
-        cacheControl: 'public, max-age=31536000',
-        customMetadata: { 
-           originalName: file.name,
-           uploadedAt: new Date().toISOString()
-        }
-      };
-      
-      const snap = await uploadBytes(storageRef, file, metadata);
-      const url = await getDownloadURL(snap.ref);
-      
-      // Append cache buster for immediate display in gallery
-      const bustedUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
-
-      setContent(prev => ({ ...prev, gallery: [bustedUrl, ...prev.gallery] }));
-    } catch (e) { throw e; }
+        cacheControl: 'public, max-age=31536000'
+    };
+    
+    const snap = await uploadBytes(storageRef, file, metadata);
+    const url = await getDownloadURL(snap.ref);
+    
+    // Add timestamp for immediate UI refresh
+    const displayUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+    
+    setContent(prev => ({ ...prev, gallery: [displayUrl, ...prev.gallery] }));
   };
 
   const removeFromGallery = async (url: string) => {
      if (!storage) return;
      try {
        await ensureAuth();
-       // Try ref from URL directly
        const r = ref(storage, url);
        await deleteObject(r);
        setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
-     } catch (e) {
-       console.error("Delete failed", e);
-       // Remove from UI anyway
-       setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
-     }
+     } catch (e) {}
   };
 
   const login = (input: string) => {
@@ -422,18 +364,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     return false;
   };
-
   const logout = () => setIsAuthenticated(false);
-
-  const changePassword = (pw: string) => {
-    localStorage.setItem('tara_admin_pw', pw);
-  };
+  const changePassword = (pw: string) => localStorage.setItem('tara_admin_pw', pw);
 
   const logVisit = async (path: string) => {
     if (!storage || path.startsWith('/admin')) return;
     try {
-       // Fire and forget logging
-       // We do NOT await ensureAuth here to prevent blocking nav
        const logRef = ref(storage, `analytics/logs/${Date.now()}.json`);
        const sid = sessionStorage.getItem('t_sid') || Math.random().toString(36).substring(2);
        sessionStorage.setItem('t_sid', sid);
@@ -444,24 +380,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <SiteContext.Provider value={{ 
-      content, 
-      updateHomeContent, 
-      addCustomSection, 
-      removeCustomSection, 
-      updateImage, 
-      uploadToGallery, 
-      removeFromGallery, 
-      logVisit, 
-      isAuthenticated, 
-      isStorageConfigured,
-      syncError, 
-      login, 
-      logout, 
-      changePassword, 
-      isInitialized,
-      hasUnsavedChanges, 
-      publishSite,
-      forceSync
+      content, updateHomeContent, addCustomSection, removeCustomSection, 
+      updateImage, uploadToGallery, removeFromGallery, logVisit, 
+      isAuthenticated, isStorageConfigured, syncError, 
+      login, logout, changePassword, isInitialized, hasUnsavedChanges, 
+      publishSite, forceSync
     }}>
       {children}
     </SiteContext.Provider>
