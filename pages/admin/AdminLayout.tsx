@@ -19,7 +19,7 @@ const AdminLayout: React.FC = () => {
     try {
       await publishSite();
       setJustPublished(true);
-      setTimeout(() => setJustPublished(false), 3000);
+      setTimeout(() => setJustPublished(false), 4000);
     } catch (e) {
       alert("Publish failed. Check settings.");
     } finally {
@@ -132,7 +132,7 @@ const AdminLayout: React.FC = () => {
           {justPublished && (
              <div className="bg-green-600 text-white px-8 py-2 flex items-center justify-center animate-fade-in-down">
                 <CheckCircle2 className="w-5 h-5 mr-2" />
-                <span className="font-bold">Site Published Successfully!</span>
+                <span className="font-bold">Site Published! Visitors will see changes on refresh.</span>
              </div>
           )}
         </div>
