@@ -1,7 +1,4 @@
-<change>
-    <file>context/SiteContext.tsx</file>
-    <description>Implement versioned storage logic with pointer file to eliminate caching issues.</description>
-    <content><![CDATA[
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { storage, ensureAuth } from '../firebase';
 import { ref, getDownloadURL, listAll, deleteObject, uploadString, uploadBytes } from 'firebase/storage';
@@ -400,46 +397,3 @@ export const useSite = () => {
   if (!context) throw new Error('Site Context missing.');
   return context;
 };
-]]></content>
-</change>
-<change>
-    <file>index.html</file>
-    <description>Remove conflicting React 19 versions to prevent 'i.H is null' hook errors and ensure stable versioning.</description>
-    <content><![CDATA[
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tara Voice Assistant</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-      body { background-color: #d9d9d9; margin: 0; font-family: 'Inter', sans-serif; }
-    </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@18.2.0",
-    "react-dom": "https://aistudiocdn.com/react-dom@18.2.0",
-    "react-dom/client": "https://aistudiocdn.com/react-dom@18.2.0/client",
-    "react-router-dom": "https://aistudiocdn.com/react-router-dom@6.22.3",
-    "@emailjs/browser": "https://aistudiocdn.com/@emailjs/browser@4.3.3",
-    "@vercel/analytics/react": "https://aistudiocdn.com/@vercel/analytics@1.2.2/react",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@0.344.0",
-    "firebase/app": "https://aistudiocdn.com/firebase@10.9.0/app",
-    "firebase/storage": "https://aistudiocdn.com/firebase@10.9.0/storage",
-    "firebase/auth": "https://aistudiocdn.com/firebase@10.9.0/auth",
-    "vite": "https://aistudiocdn.com/vite@^5.1.4",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^4.2.1"
-  }
-}
-</script>
-</head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
-  </body>
-</html>
-]]></content>
-</change>
-</changes>
