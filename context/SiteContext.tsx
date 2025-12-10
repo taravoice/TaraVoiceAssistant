@@ -196,11 +196,22 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // EXPLICIT PUBLISH ACTION
   const publishSite = async () => {
-     await saveToCloud(content);
+     // CRITICAL: Update timestamp to NOW to ensure cache busting on all clients
+     const timestamp = Date.now();
+     const contentToPublish = {
+       ...content,
+       updatedAt: timestamp
+     };
+
+     // Upload the fresh version
+     await saveToCloud(contentToPublish);
+     
+     // Update local state to match
+     setContent(contentToPublish);
      setHasUnsavedChanges(false);
-     // Update the timestamp in local storage to match the "saved" time implies keeping them in sync
-     const synced = { ...content };
-     localStorage.setItem('tara_site_config', JSON.stringify(synced));
+     
+     // Sync local storage
+     localStorage.setItem('tara_site_config', JSON.stringify(contentToPublish));
   };
 
   // Helper to update state and mark as draft
