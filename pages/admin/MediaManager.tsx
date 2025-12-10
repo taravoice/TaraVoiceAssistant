@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useSite } from '../../context/SiteContext';
 import { ImageGalleryModal } from '../../components/ImageGalleryModal';
-import { Loader2, Info } from 'lucide-react';
+import { Loader2, Info, AlertTriangle } from 'lucide-react';
 
 const imageSlots = [
   { key: 'logo', page: 'Global', section: 'Website Logo' },
@@ -20,7 +20,7 @@ const imageSlots = [
 ];
 
 const MediaManager: React.FC = () => {
-  const { content, updateImage } = useSite();
+  const { content, updateImage, isStorageConfigured } = useSite();
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -40,8 +40,9 @@ const MediaManager: React.FC = () => {
         await updateImage(selectedSlot, url);
         // Visual pause for psychological feedback
         await new Promise(r => setTimeout(r, 800));
-      } catch (e) {
-        alert("Sync broadcast failed. Check bucket settings.");
+      } catch (e: any) {
+        console.error(e);
+        alert(`Sync Error: ${e.message}`);
       } finally {
         setIsSaving(false);
         setSelectedSlot(null);
@@ -64,6 +65,19 @@ const MediaManager: React.FC = () => {
         )}
       </div>
 
+      {!isStorageConfigured && (
+        <div className="bg-red-50 border border-red-200 p-4 rounded-xl flex items-start text-red-800 shadow-sm">
+          <AlertTriangle className="w-6 h-6 mr-3 shrink-0" />
+          <div>
+            <p className="font-bold">Cloud Storage Not Connected</p>
+            <p className="text-sm mt-1">
+              Changes you make here will only be saved to your current browser (Local Storage). 
+              <strong>Other users will NOT see these updates</strong> until you add your Firebase API Keys to your Vercel Environment Variables.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 text-amber-800 flex items-start shadow-sm">
         <Info className="w-5 h-5 mr-3 mt-0.5 shrink-0" />
         <p className="text-sm leading-relaxed">
@@ -85,8 +99,10 @@ const MediaManager: React.FC = () => {
              return (
                <div key={slot.key} className="grid grid-cols-12 gap-4 p-6 items-center hover:bg-slate-50 transition-colors">
                  <div className="col-span-3 flex items-center space-x-2">
-                   <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></div>
-                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">In Sync</span>
+                   <div className={`w-2.5 h-2.5 rounded-full ${isStorageConfigured ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`}></div>
+                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                     {isStorageConfigured ? 'In Sync' : 'Local Only'}
+                   </span>
                  </div>
                  <div className="col-span-6">
                    <div className="font-bold text-slate-900">{slot.page}</div>
