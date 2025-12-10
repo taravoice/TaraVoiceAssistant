@@ -90,32 +90,41 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsStorageConfigured(true);
 
     try {
+      // CRITICAL: Ensure we are authenticated (anonymously) before trying to read config.
+      // This prevents permission errors if the storage rules require auth.
+      await ensureAuth().catch(err => console.warn("Anon Auth failed, trying public access...", err));
+      
       const configRef = ref(storage, 'config/site_config.json');
       const baseUrl = await getDownloadURL(configRef);
       
       const separator = baseUrl.includes('?') ? '&' : '?';
-      const response = await fetch(`${baseUrl}${separator}t=${Date.now()}`, { 
-        cache: 'no-store'
+      // Use a robust cache buster
+      const response = await fetch(`${baseUrl}${separator}t=${Date.now()}&nocache=true`, { 
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
       });
       
       if (response.ok) {
         const cloudConfig = await response.json();
         if (cloudConfig) {
+          console.log("☁️ SITE CONTEXT: Config loaded from cloud.", cloudConfig.updatedAt);
           setContent(prev => {
              const updated = {
                ...prev,
                ...cloudConfig,
                images: { ...prev.images, ...cloudConfig.images }, // Authoritative merge
-               updatedAt: cloudConfig.updatedAt || prev.updatedAt,
+               updatedAt: cloudConfig.updatedAt || Date.now(),
                gallery: prev.gallery // Gallery is fetched separately
              };
              localStorage.setItem('tara_site_config', JSON.stringify(updated));
              return updated;
           });
         }
+      } else {
+        throw new Error(`Config fetch failed: ${response.status}`);
       }
     } catch (err) {
-      console.warn("☁️ SITE CONTEXT: Using cached or default data.");
+      console.warn("☁️ SITE CONTEXT: Using cached or default data due to load error.", err);
       const local = localStorage.getItem('tara_site_config');
       if (local) {
         try {
@@ -126,14 +135,18 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Always fetch the gallery
     try {
+      // Ensure auth again for gallery list
+      if (!isAuthenticated) await ensureAuth().catch(() => {});
       const galleryListRef = ref(storage, 'gallery/');
       const res = await listAll(galleryListRef);
       const urls = await Promise.all(res.items.map(r => getDownloadURL(r)));
       setContent(prev => ({ ...prev, gallery: urls }));
-    } catch (e) {}
+    } catch (e) {
+      console.warn("Gallery load failed (likely permission or empty)", e);
+    }
 
     setIsInitialized(true);
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     initSite();
@@ -146,7 +159,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const configRef = ref(storage, 'config/site_config.json');
       const { gallery, ...saveData } = newContent;
       
-      console.log("☁️ SITE CONTEXT: Saving config to cloud...", saveData);
+      console.log("☁️ SITE CONTEXT: Saving config to cloud...", saveData.updatedAt);
       
       await uploadString(configRef, JSON.stringify(saveData), 'raw', {
         contentType: 'application/json',
