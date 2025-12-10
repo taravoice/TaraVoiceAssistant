@@ -51,15 +51,17 @@ const About: React.FC = () => {
 
         {/* Why We Built Tara */}
         <div className="flex flex-col md:flex-row items-center gap-12">
-           <div className="md:w-1/2">
-              <img 
-                key={getBustedUrl(content.images.aboutTeam)}
-                src={getBustedUrl(content.images.aboutTeam)} 
-                alt="Team working" 
-                className="rounded-2xl shadow-lg w-full h-auto object-cover"
-              />
-           </div>
-           <div className="md:w-1/2 space-y-4">
+           {content.images.aboutTeam && (
+             <div className="md:w-1/2">
+                <img 
+                  key={getBustedUrl(content.images.aboutTeam)}
+                  src={getBustedUrl(content.images.aboutTeam)} 
+                  alt="Team working" 
+                  className="rounded-2xl shadow-lg w-full h-auto object-cover"
+                />
+             </div>
+           )}
+           <div className={`${content.images.aboutTeam ? 'md:w-1/2' : 'w-full'} space-y-4`}>
               <h2 className="text-3xl font-bold text-slate-900">Why We Built Tara</h2>
               <p className="text-lg text-slate-600 leading-relaxed">
                 We noticed that small businesses were losing valuable leads simply because they couldn't answer the phone. Receptionists are expensive, and voicemail is often ignored. Tara was built to bridge this gap—providing an affordable, intelligent, and reliable voice interface for businesses that want to grow.
@@ -83,15 +85,17 @@ const About: React.FC = () => {
 
         {/* The Future */}
         <div className="flex flex-col md:flex-row-reverse items-center gap-12">
-           <div className="md:w-1/2">
-              <img 
-                key={getBustedUrl(content.images.aboutFuture)}
-                src={getBustedUrl(content.images.aboutFuture)} 
-                alt="AI Future" 
-                className="rounded-2xl shadow-lg w-full h-auto object-cover"
-              />
-           </div>
-           <div className="md:w-1/2 space-y-4">
+           {content.images.aboutFuture && (
+             <div className="md:w-1/2">
+                <img 
+                  key={getBustedUrl(content.images.aboutFuture)}
+                  src={getBustedUrl(content.images.aboutFuture)} 
+                  alt="AI Future" 
+                  className="rounded-2xl shadow-lg w-full h-auto object-cover"
+                />
+             </div>
+           )}
+           <div className={`${content.images.aboutFuture ? 'md:w-1/2' : 'w-full'} space-y-4`}>
               <div className="flex items-center space-x-3 mb-2">
                  <Zap className="w-6 h-6 text-[#0097b2]" />
                  <h2 className="text-3xl font-bold text-slate-900">The Future of AI Phone Assistants</h2>
