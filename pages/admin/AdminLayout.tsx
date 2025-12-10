@@ -1,10 +1,11 @@
+
 import React from 'react';
 import { Link, useLocation, Navigate, Outlet } from 'react-router-dom';
-import { LayoutDashboard, FileText, Image as ImageIcon, Settings as SettingsIcon, LogOut, ExternalLink, Grid, AlertTriangle } from 'lucide-react';
+import { LayoutDashboard, FileText, Image as ImageIcon, Settings as SettingsIcon, LogOut, ExternalLink, Grid, AlertTriangle, CloudOff } from 'lucide-react';
 import { useSite } from '../../context/SiteContext';
 
 const AdminLayout: React.FC = () => {
-  const { isAuthenticated, logout, content, isStorageConfigured } = useSite();
+  const { isAuthenticated, logout, content, isStorageConfigured, syncError } = useSite();
   const location = useLocation();
 
   if (!isAuthenticated) {
@@ -74,6 +75,19 @@ const AdminLayout: React.FC = () => {
               <strong>Storage not connected:</strong> Image uploads are disabled. Add your Firebase keys in Vercel to enable the Gallery.
             </span>
           </div>
+        )}
+
+        {syncError && (
+           <div className="bg-red-600 text-white px-8 py-3 flex items-center shadow-lg animate-fade-in-down">
+              <CloudOff className="w-5 h-5 mr-3" />
+              <div className="flex-1">
+                 <p className="font-bold">Changes Not Saved to Cloud</p>
+                 <p className="text-sm opacity-90">{syncError}</p>
+              </div>
+              <Link to="/admin/settings" className="bg-white text-red-600 px-3 py-1.5 rounded-md text-sm font-bold hover:bg-red-50">
+                 Fix Config
+              </Link>
+           </div>
         )}
 
         <main className="flex-1 overflow-auto p-8">
