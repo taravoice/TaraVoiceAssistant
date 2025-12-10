@@ -44,10 +44,11 @@ interface SiteContextType {
   logout: () => void;
   changePassword: (newPassword: string) => void;
   isInitialized: boolean;
+  hasUnsavedChanges: boolean;
+  publishSite: () => Promise<void>;
   forceSync: () => Promise<void>;
 }
 
-// SMART DEFAULTS: Shown until Admin updates them in Cloud
 const initialImages: SiteImages = {
   logo: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2070&auto=format&fit=crop',
   homeHeroBg: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=1965&auto=format&fit=crop',
@@ -84,6 +85,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isStorageConfigured, setIsStorageConfigured] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
   const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
@@ -96,14 +98,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsStorageConfigured(true);
 
     try {
-      // Ensure anonymous auth to access bucket
       await ensureAuth().catch(err => console.warn("Anon Auth failed, trying public access...", err));
       
       const configRef = ref(storage, 'config/site_config.json');
       const baseUrl = await getDownloadURL(configRef);
       
       const separator = baseUrl.includes('?') ? '&' : '?';
-      // Robust cache busting
       const response = await fetch(`${baseUrl}${separator}t=${Date.now()}&nocache=true`, { 
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
@@ -111,25 +111,39 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (response.ok) {
         const cloudConfig = await response.json();
-        if (cloudConfig) {
-          console.log("☁️ SITE CONTEXT: Config loaded from cloud.", cloudConfig.updatedAt);
-          setContent(prev => {
-             const updated = {
-               ...prev,
-               ...cloudConfig,
-               images: { ...prev.images, ...cloudConfig.images }, // Authoritative merge
-               updatedAt: cloudConfig.updatedAt || Date.now(),
-               gallery: prev.gallery // Gallery is fetched separately
-             };
-             localStorage.setItem('tara_site_config', JSON.stringify(updated));
-             return updated;
-          });
+        const localStr = localStorage.getItem('tara_site_config');
+        let localConfig = null;
+        if (localStr) {
+           try { localConfig = JSON.parse(localStr); } catch(e) {}
         }
-      } else {
-        throw new Error(`Config fetch failed: ${response.status}`);
-      }
+
+        // DRAFT LOGIC: If local draft is newer than cloud, keep local
+        if (localConfig && localConfig.updatedAt > (cloudConfig.updatedAt || 0)) {
+           console.log("📝 SITE CONTEXT: Local draft is newer. Resuming draft.");
+           setContent(prev => ({
+             ...prev,
+             ...localConfig,
+             gallery: prev.gallery
+           }));
+           setHasUnsavedChanges(true);
+        } else {
+           // Cloud is newer or equal, sync to cloud
+           console.log("☁️ SITE CONTEXT: Synced to Cloud Config.");
+           const updated = {
+             ...content, // defaults
+             ...cloudConfig,
+             images: { ...content.images, ...cloudConfig.images },
+             updatedAt: cloudConfig.updatedAt || Date.now(),
+             gallery: content.gallery
+           };
+           setContent(updated);
+           localStorage.setItem('tara_site_config', JSON.stringify(updated));
+           setHasUnsavedChanges(false);
+        }
+      } 
     } catch (err) {
-      console.warn("☁️ SITE CONTEXT: Using cached or default data due to load error.", err);
+      console.warn("☁️ SITE CONTEXT: Could not load cloud config. Using local/default.", err);
+      // Fallback to local
       const local = localStorage.getItem('tara_site_config');
       if (local) {
         try {
@@ -138,7 +152,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    // Always fetch the gallery if possible
+    // Load Gallery separately (read-only list)
     try {
       if (!isAuthenticated) await ensureAuth().catch(() => {});
       const galleryListRef = ref(storage, 'gallery/');
@@ -158,7 +172,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveToCloud = useCallback(async (newContent: SiteContent) => {
     if (!storage) {
-      const msg = "Cloud Sync Failed: Storage is not configured in environment variables.";
+      const msg = "Cloud Sync Failed: Storage is not configured.";
       setSyncError(msg);
       throw new Error(msg);
     }
@@ -167,94 +181,76 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const configRef = ref(storage, 'config/site_config.json');
       const { gallery, ...saveData } = newContent;
       
-      console.log("☁️ SITE CONTEXT: Saving config to cloud...", saveData.updatedAt);
-      
       await uploadString(configRef, JSON.stringify(saveData), 'raw', {
         contentType: 'application/json',
         cacheControl: 'no-cache, no-store, must-revalidate'
       });
-      console.log("☁️ SITE CONTEXT: Save success.");
+      console.log("☁️ SITE CONTEXT: Publish success.");
       setSyncError(null);
     } catch (e: any) {
-      console.error("☁️ SITE CONTEXT: Broadcast failed.", e);
+      console.error("☁️ SITE CONTEXT: Publish failed.", e);
       setSyncError(e.message || "Unknown Cloud Sync Error");
       throw e; 
     }
   }, []);
 
-  const forceSync = async () => {
+  // EXPLICIT PUBLISH ACTION
+  const publishSite = async () => {
      await saveToCloud(content);
+     setHasUnsavedChanges(false);
+     // Update the timestamp in local storage to match the "saved" time implies keeping them in sync
+     const synced = { ...content };
+     localStorage.setItem('tara_site_config', JSON.stringify(synced));
+  };
+
+  // Helper to update state and mark as draft
+  const updateStateAndDraft = (updater: (prev: SiteContent) => SiteContent) => {
+     setContent(prev => {
+        const next = updater(prev);
+        // Save Draft to LocalStorage
+        localStorage.setItem('tara_site_config', JSON.stringify(next));
+        return next;
+     });
+     setHasUnsavedChanges(true);
   };
 
   const updateHomeContent = async (key: keyof SiteContent['home'], value: any) => {
-    const time = Date.now();
-    const updated = { 
-      ...content, 
-      home: { ...content.home, [key]: value }, 
-      updatedAt: time 
-    };
-    
-    setContent(updated);
-    localStorage.setItem('tara_site_config', JSON.stringify(updated));
-    try {
-      await saveToCloud(updated);
-    } catch (e) {
-      // Catch here so inputs don't crash, but syncError state is set
-      console.warn("Background save failed");
-    }
+    updateStateAndDraft(prev => ({
+      ...prev,
+      home: { ...prev.home, [key]: value },
+      updatedAt: Date.now()
+    }));
   };
 
   const addCustomSection = async (section: CustomSection) => {
-    const time = Date.now();
-    const updated = { 
-      ...content, 
-      customSections: [...content.customSections, section], 
-      updatedAt: time 
-    };
-    
-    setContent(updated);
-    localStorage.setItem('tara_site_config', JSON.stringify(updated));
-    try {
-      await saveToCloud(updated);
-    } catch (e) {
-      console.warn("Background save failed");
-    }
+    updateStateAndDraft(prev => ({
+      ...prev,
+      customSections: [...prev.customSections, section],
+      updatedAt: Date.now()
+    }));
   };
 
   const removeCustomSection = async (id: string) => {
-    const time = Date.now();
-    const updated = { 
-      ...content, 
-      customSections: content.customSections.filter(s => s.id !== id), 
-      updatedAt: time 
-    };
-    
-    setContent(updated);
-    localStorage.setItem('tara_site_config', JSON.stringify(updated));
-    try {
-      await saveToCloud(updated);
-    } catch (e) {
-      console.warn("Background save failed");
-    }
+    updateStateAndDraft(prev => ({
+      ...prev,
+      customSections: prev.customSections.filter(s => s.id !== id),
+      updatedAt: Date.now()
+    }));
   };
 
   const updateImage = async (key: string, url: string) => {
-    const time = Date.now();
-    const updated = { 
-      ...content, 
-      images: { 
-        ...content.images, 
-        [key]: url 
-      }, 
-      updatedAt: time 
-    };
-    
-    setContent(updated);
-    localStorage.setItem('tara_site_config', JSON.stringify(updated));
-    // Media updates should propagate error to caller (Spinner)
-    await saveToCloud(updated);
+    updateStateAndDraft(prev => ({
+      ...prev,
+      images: { ...prev.images, [key]: url },
+      updatedAt: Date.now()
+    }));
   };
 
+  const forceSync = async () => {
+     await publishSite();
+  };
+
+  // Gallery operations still happen immediately as they are file operations, not config operations
   const uploadToGallery = async (file: File) => {
     if (!storage) throw new Error("Storage not configured");
     try {
@@ -322,6 +318,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logout, 
       changePassword,
       isInitialized,
+      hasUnsavedChanges,
+      publishSite,
       forceSync
     }}>
       {children}
