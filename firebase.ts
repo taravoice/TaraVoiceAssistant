@@ -1,3 +1,4 @@
+
 // Use namespace imports to resolve named export missing member resolution issues in standard modular firebase
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getStorage } from 'firebase/storage';
@@ -58,4 +59,6 @@ export const ensureAuth = async () => {
   }
 };
 
+// Export bucket name for direct fetch fallback
+export const bucketName = bucket;
 export { storage, auth };
