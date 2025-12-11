@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { storage, ensureAuth, bucketName } from '../firebase';
-import { ref, getDownloadURL, listAll, uploadBytes } from 'firebase/storage';
+import { ref, uploadBytes } from 'firebase/storage';
 
 export interface CustomSection {
   id: string;
@@ -89,17 +89,16 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
-  // HELPER: Safe LocalStorage Write (Prevents Quota Crashes on Mobile)
+  // HELPER: Safe LocalStorage Write
   const safeSetItem = (key: string, value: string) => {
     try {
       localStorage.setItem(key, value);
     } catch (e: any) {
-      console.warn(`[SiteContext] Storage Quota Exceeded or Blocked. Data not cached locally. (${e.message})`);
-      // We do NOT throw here, allowing the app to continue running in memory.
+      console.warn(`[SiteContext] Storage Quota Limit. Data in memory only.`);
     }
   };
 
-  // HELPER: Compress and Convert to Base64
+  // HELPER: Compress Base64
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -111,22 +110,16 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
-          
-          // Max width 800px to save space for Base64 storage
           const MAX_WIDTH = 800;
           if (width > MAX_WIDTH) {
             height *= MAX_WIDTH / width;
             width = MAX_WIDTH;
           }
-
           canvas.width = width;
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           ctx?.drawImage(img, 0, 0, width, height);
-          
-          // Compress to JPEG 70% quality
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-          resolve(dataUrl);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
         };
         img.onerror = (err) => reject(err);
       };
@@ -134,131 +127,92 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  // --- ROBUST FETCH STRATEGY ---
+  // --- ROBUST HTTP FETCH (Strategy: Pointer -> File) ---
   const fetchLatestConfig = async () => {
-      let fetchedConfig = null;
+      if (!bucketName) return null;
 
-      // Strategy A: LIGHTWEIGHT POINTER (Best for Mobile/Slow Connections)
-      // Tries to read config/current.json via raw HTTP to find the filename
-      if (bucketName) {
-        try {
-            console.log("[SiteContext] Strategy A: Fetching Pointer via HTTP...");
-            const timestamp = Date.now();
-            const pointerUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fcurrent.json?alt=media&t=${timestamp}`;
-            const pointerRes = await fetch(pointerUrl, { cache: 'no-store' });
-            
-            if (pointerRes.ok) {
-                const pointerData = await pointerRes.json();
-                if (pointerData.version) {
-                    console.log("[SiteContext] Pointer found:", pointerData.version);
-                    const fileUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2F${pointerData.version}?alt=media`;
-                    const fileRes = await fetch(fileUrl);
-                    if (fileRes.ok) {
-                        fetchedConfig = await fileRes.json();
-                        return fetchedConfig; // Success
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn("[SiteContext] Strategy A failed (Pointer HTTP)", e);
-        }
-      }
-
-      // Strategy B: LIST ALL FILES (The "Truth" Strategy - Admin/Desktop)
-      if (storage) {
-          try {
-             console.log("[SiteContext] Strategy B: Listing config folder...");
-             const configListRef = ref(storage, 'config/');
-             const res = await listAll(configListRef);
-             
-             const versionFiles = res.items.filter(item => item.name.startsWith('site_config_v_'));
-             
-             if (versionFiles.length > 0) {
-                 versionFiles.sort((a, b) => {
-                     const timeA = parseInt(a.name.split('_v_')[1] || '0');
-                     const timeB = parseInt(b.name.split('_v_')[1] || '0');
-                     return timeB - timeA;
-                 });
-                 console.log("[SiteContext] Found latest version via List:", versionFiles[0].name);
-                 const url = await getDownloadURL(versionFiles[0]);
-                 const response = await fetch(url);
-                 if (response.ok) fetchedConfig = await response.json();
-             }
-          } catch (e) {
-             console.warn("[SiteContext] Strategy B failed (List SDK)", e);
+      try {
+          // 1. Fetch Pointer (current.json) with CACHE BUSTING
+          const t = Date.now();
+          const pointerUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fcurrent.json?alt=media&t=${t}`;
+          
+          console.log("[SiteContext] Fetching pointer:", pointerUrl);
+          const pointerRes = await fetch(pointerUrl, { cache: 'no-store' });
+          
+          if (pointerRes.ok) {
+              const pointerData = await pointerRes.json();
+              if (pointerData.version) {
+                  // 2. Fetch the Actual Config File
+                  const fileUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2F${pointerData.version}?alt=media`;
+                  console.log("[SiteContext] Downloading config:", pointerData.version);
+                  
+                  const fileRes = await fetch(fileUrl);
+                  if (fileRes.ok) return await fileRes.json();
+              }
           }
+      } catch (e) {
+          console.warn("[SiteContext] Pointer fetch failed, trying legacy...", e);
       }
 
-      if (fetchedConfig) return fetchedConfig;
-
-      // Strategy C: LEGACY HTTP FETCH (Last Resort)
-      if (bucketName) {
-          try {
-              console.log("[SiteContext] Strategy C: Fetching legacy backup via HTTP...");
-              const timestamp = Date.now();
-              const random = Math.random().toString(36).substring(7);
-              const legacyUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fsite_config.json?alt=media&t=${timestamp}_${random}`;
-              
-              const res = await fetch(legacyUrl, { cache: 'no-store' });
-              if (res.ok) return await res.json();
-          } catch (e) {
-              console.warn("[SiteContext] Strategy C failed", e);
-          }
-      }
+      // 3. Fallback to Legacy File
+      try {
+          const legacyUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fsite_config.json?alt=media&t=${Date.now()}`;
+          const res = await fetch(legacyUrl);
+          if (res.ok) return await res.json();
+      } catch (e) {}
 
       return null;
   };
 
-  // --- Initialize site ---
+  // --- INIT ---
   const initSite = useCallback(async () => {
     setIsStorageConfigured(!!storage);
 
-    // 1. Load Local Draft First (Instant UI)
-    const localStr = localStorage.getItem('tara_site_config');
+    // 1. Try Local Draft
     let localConfig: SiteContent | null = null;
+    const localStr = localStorage.getItem('tara_site_config');
     if (localStr) {
-      try { 
-          localConfig = JSON.parse(localStr);
-          if (localConfig) setContent(prev => ({ ...prev, ...localConfig }));
-      } catch (e) {}
+      try { localConfig = JSON.parse(localStr); } catch (e) {}
     }
 
-    // 2. Fetch Latest from Cloud
+    // 2. Try Cloud
     const cloudConfig = await fetchLatestConfig();
 
     if (cloudConfig) {
        const cloudTime = cloudConfig.updatedAt || 0;
        const localTime = localConfig?.updatedAt || 0;
-       
-       // SYNC LOGIC
-       if (localTime > cloudTime) {
-           const lastPublished = parseInt(localStorage.getItem('tara_last_published') || '0');
-           if (Math.abs(localTime - lastPublished) < 2000) {
-               console.log("[SiteContext] Synced (Local matches last published).");
-               setHasUnsavedChanges(false);
-           } else {
-               console.log("[SiteContext] Local Draft is newer. Keeping Draft.");
-               setHasUnsavedChanges(true);
-           }
+       const lastPublished = parseInt(localStorage.getItem('tara_last_published') || '0');
+
+       // Check if we are "Synced"
+       if (localTime > cloudTime && Math.abs(localTime - lastPublished) < 2000) {
+           console.log("[SiteContext] Synced state verified.");
+           setHasUnsavedChanges(false);
+           if (localConfig) setContent({ ...initialContent, ...localConfig });
        } 
-       else {
-           console.log("[SiteContext] Cloud is newer/equal. Syncing.");
+       else if (localTime > cloudTime) {
+           console.log("[SiteContext] Local Draft is newer.");
+           setHasUnsavedChanges(true);
+           if (localConfig) setContent({ ...initialContent, ...localConfig });
+       } else {
+           console.log("[SiteContext] Using Cloud Data.");
+           // Merge to ensure no data loss
            const merged = { 
                ...initialContent, 
-               ...cloudConfig,
-               // Deep merge images and gallery to ensure no data loss
+               ...cloudConfig, 
                images: { ...initialImages, ...cloudConfig.images },
-               gallery: cloudConfig.gallery || [] 
+               gallery: cloudConfig.gallery || []
            };
-           
            setContent(merged);
            safeSetItem('tara_site_config', JSON.stringify(merged));
-           setHasUnsavedChanges(false);
            safeSetItem('tara_last_published', cloudTime.toString());
+           setHasUnsavedChanges(false);
        }
     } else {
-       console.log("[SiteContext] Failed to load cloud config. Staying with local or default.");
-       if (localConfig) setHasUnsavedChanges(true);
+       // Cloud failed (offline/mobile block), use Local if available
+       if (localConfig) {
+           setContent({ ...initialContent, ...localConfig });
+           setHasUnsavedChanges(true); // Assume unsaved if we can't verify cloud
+       }
     }
     setIsInitialized(true);
   }, []);
@@ -267,45 +221,35 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initSite();
   }, [initSite]);
 
+  // --- SAVE ---
   const saveToCloud = useCallback(async (newContent: SiteContent) => {
     if (!storage) throw new Error("Storage not configured.");
-    
-    // SAVE EVERYTHING: Include gallery since images are now Base64 encoded strings in the JSON
+
     const saveData = newContent;
-    const timestamp = saveData.updatedAt; 
-    
+    const timestamp = saveData.updatedAt;
     const jsonString = JSON.stringify(saveData);
     const contentBlob = new Blob([jsonString], { type: 'application/json' });
-    
-    const immutableMetadata = {
-        contentType: 'application/json',
-        cacheControl: 'public, max-age=31536000',
-        customMetadata: { version: String(timestamp) }
-    };
 
-    const noCacheMetadata = {
-        contentType: 'application/json',
-        cacheControl: 'no-cache, no-store, max-age=0'
-    };
-    
-    // 1. Versioned Config
+    // Metadata: Force NO CACHE on pointer
+    const noCacheMeta = { contentType: 'application/json', cacheControl: 'no-cache, no-store, max-age=0' };
+    const longCacheMeta = { contentType: 'application/json', cacheControl: 'public, max-age=31536000' };
+
+    // 1. Upload Versioned File (Long Cache)
     const versionFilename = `site_config_v_${timestamp}.json`;
     const versionRef = ref(storage, `config/${versionFilename}`);
-    await uploadBytes(versionRef, contentBlob, immutableMetadata);
+    await uploadBytes(versionRef, contentBlob, longCacheMeta);
 
-    // 2. Pointer File (config/current.json)
-    // IMPORTANT: Saving this allows Strategy A (Lightweight) to work
+    // 2. Upload Pointer File (No Cache)
     const pointerData = { version: versionFilename, updatedAt: timestamp };
     const pointerBlob = new Blob([JSON.stringify(pointerData)], { type: 'application/json' });
     const pointerRef = ref(storage, 'config/current.json');
-    await uploadBytes(pointerRef, pointerBlob, noCacheMetadata);
+    await uploadBytes(pointerRef, pointerBlob, noCacheMeta);
 
-    // 3. Legacy Backup (Fallback)
+    // 3. Upload Legacy File (No Cache)
     const legacyRef = ref(storage, 'config/site_config.json');
-    await uploadBytes(legacyRef, contentBlob, noCacheMetadata);
-    
+    await uploadBytes(legacyRef, contentBlob, noCacheMeta);
+
     setSyncError(null);
-    console.log("☁️ SITE CONTEXT: Saved successfully (Base64 Mode with Pointer).");
   }, []);
 
   const publishSite = async () => {
@@ -313,12 +257,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         alert("Cannot publish: Storage not configured.");
         return;
      }
-     
      const timestamp = Date.now();
-     const contentToPublish = {
-       ...content,
-       updatedAt: timestamp
-     };
+     const contentToPublish = { ...content, updatedAt: timestamp };
      
      safeSetItem('tara_last_published', timestamp.toString());
      safeSetItem('tara_site_config', JSON.stringify(contentToPublish));
@@ -362,7 +302,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
-    // In Base64 mode, 'url' is the base64 string.
     updateStateAndDraft(prev => ({
       ...prev,
       images: { ...prev.images, [key]: url },
@@ -374,25 +313,19 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const uploadToGallery = async (file: File) => {
     try {
-      // COMPRESS AND CONVERT TO BASE64
-      // This bypasses Firebase Storage for images entirely.
       const base64String = await compressImage(file);
-      
-      // Store locally in the gallery array and SAVE DRAFT
       updateStateAndDraft(prev => ({ 
           ...prev, 
           gallery: [base64String, ...prev.gallery],
           updatedAt: Date.now()
       }));
-      
     } catch (e: any) {
-       console.error("Image processing failed:", e);
+       console.error("Image error:", e);
        alert("Failed to process image: " + e.message);
     }
   };
 
   const removeFromGallery = async (url: string) => {
-     // Just filter it out of the array
      updateStateAndDraft(prev => ({ 
          ...prev, 
          gallery: prev.gallery.filter(i => i !== url),
