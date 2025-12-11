@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { storage, ensureAuth, bucketName } from '../firebase';
-import { ref, getDownloadURL, listAll, deleteObject, uploadString, uploadBytes, updateMetadata } from 'firebase/storage';
+import { ref, getDownloadURL, listAll, deleteObject, uploadBytes, updateMetadata } from 'firebase/storage';
 
 export interface CustomSection {
   id: string;
@@ -106,14 +106,16 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // --- ROBUST FETCH STRATEGY ---
   const fetchLatestConfig = async () => {
-      // Strategy A: List All Files (Admin/SDK) - Bypasses CDN Cache entirely
+      // Strategy A: LIST ALL FILES (The "Truth" Strategy)
+      // This bypasses the cached 'current.json' entirely by asking the bucket for the list of files.
+      // This works best on Admin browsers or permissive browsers (Firefox/Safari).
       if (storage) {
           try {
-             // We don't await auth here to prevent blocking strict browsers
+             // We attempt to list without blocking on auth to be faster
              const configListRef = ref(storage, 'config/');
              const res = await listAll(configListRef);
              
-             // Filter for versioned files only: site_config_v_TIMESTAMP.json
+             // Filter for versioned files: site_config_v_TIMESTAMP.json
              const versionFiles = res.items.filter(item => item.name.startsWith('site_config_v_'));
              
              if (versionFiles.length > 0) {
@@ -128,22 +130,30 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
                  console.log("[SiteContext] Found latest version via List:", versionFiles[0].name);
                  const url = await getDownloadURL(versionFiles[0]);
                  const response = await fetch(url);
-                 return await response.json();
+                 if (response.ok) return await response.json();
              }
           } catch (e) {
-             console.warn("[SiteContext] ListAll Fetch failed (likely permissions or strict browser)", e);
+             console.warn("[SiteContext] ListAll Fetch failed (Privacy Block or Permissions)", e);
           }
       }
 
-      // Strategy B: Legacy HTTP Fallback (If listing is blocked)
-      // This helps strict browsers (Edge/Chrome) that might block the listAll call
+      // Strategy B: LEGACY HTTP FETCH (The "Brute Force" Strategy)
+      // This helps Strict Browsers (Edge/Chrome) that block the SDK/IndexedDB.
+      // We manually construct the URL to the 'site_config.json' fallback file.
+      // We append a random timestamp to FORCE bypass the CDN cache (solving the Yandex issue).
       if (bucketName) {
           try {
-              console.log("[SiteContext] Trying Legacy HTTP fetch...");
-              // We add a random number to FORCE bypass any edge cache
-              // IMPORTANT: This relies on site_config.json being kept up to date
-              const legacyUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fsite_config.json?alt=media&t=${Date.now()}_${Math.random()}`;
-              const res = await fetch(legacyUrl, { cache: 'no-store' });
+              console.log("[SiteContext] Trying Direct HTTP fetch...");
+              const timestamp = Date.now();
+              const random = Math.random().toString(36).substring(7);
+              // NOTE: This URL pattern is standard for public Firebase buckets
+              const legacyUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fsite_config.json?alt=media&t=${timestamp}_${random}`;
+              
+              const res = await fetch(legacyUrl, { 
+                  cache: 'no-store',
+                  headers: { 'Cache-Control': 'no-cache' } 
+              });
+              
               if (res.ok) return await res.json();
           } catch (e) {
               console.warn("[SiteContext] HTTP Legacy fetch failed", e);
@@ -180,6 +190,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
        const cloudTime = cloudConfig.updatedAt || 0;
        const localTime = localConfig?.updatedAt || 0;
        
+       // Fix URLs from cloud
        if (cloudConfig.images) {
            Object.keys(cloudConfig.images).forEach(k => {
                cloudConfig.images[k] = fixUrl(cloudConfig.images[k]);
@@ -187,11 +198,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
        }
        
        // SYNC LOGIC
+       // If Local Draft is NEWER than cloud, keep local.
        if (localTime > cloudTime) {
            const lastPublished = parseInt(localStorage.getItem('tara_last_published') || '0');
            
-           // If local matches the last known published time, we are actually in sync!
-           if (Math.abs(localTime - lastPublished) < 1000) {
+           // Exception: If local matches the last known published time, we are synced.
+           if (Math.abs(localTime - lastPublished) < 2000) {
                console.log("[SiteContext] Synced (Local matches last published).");
                setHasUnsavedChanges(false);
            } else {
@@ -200,8 +212,27 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
            }
        } 
        else {
+           // Cloud is newer -> Update everything
            console.log("[SiteContext] Cloud is newer/equal. Overwriting local.");
-           const merged = { ...initialContent, ...cloudConfig };
+           
+           // Safe Merge: Don't overwrite existing local images with empty strings from cloud
+           // (This handles the 'Split Brain' issue if cloud was saved with empty data)
+           const mergedImages = { ...initialImages };
+           if (localConfig?.images) Object.assign(mergedImages, localConfig.images);
+           if (cloudConfig.images) {
+              Object.keys(cloudConfig.images).forEach(key => {
+                 if (cloudConfig.images[key] && cloudConfig.images[key] !== "") {
+                     mergedImages[key] = cloudConfig.images[key];
+                 }
+              });
+           }
+
+           const merged = { 
+               ...initialContent, 
+               ...cloudConfig,
+               images: mergedImages 
+           };
+           
            setContent(merged);
            localStorage.setItem('tara_site_config', JSON.stringify(merged));
            setHasUnsavedChanges(false);
@@ -210,7 +241,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else {
        console.log("[SiteContext] Failed to load cloud config. Staying with local or default.");
        if (localConfig) {
-           setHasUnsavedChanges(true); // Assuming local is a draft if cloud failed
+           // If we have a local config but cloud failed, treat as unsaved just in case
+           setHasUnsavedChanges(true);
        }
     }
 
@@ -246,31 +278,44 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { gallery, ...saveData } = newContent;
     const timestamp = saveData.updatedAt; 
     
+    // Use Blobs for reliable metadata assignment
+    const jsonString = JSON.stringify(saveData);
+    const contentBlob = new Blob([jsonString], { type: 'application/json' });
+    
+    // Metadata options ensuring cache-control is set
+    // 'no-store' is critical for the pointer file and legacy file
+    const strictMetadata = {
+        contentType: 'application/json',
+        cacheControl: 'no-cache, no-store, max-age=0'
+    };
+    
     // 1. Versioned Config (Archival)
+    // We can allow caching on this because the filename contains the timestamp (it is unique)
     const versionFilename = `site_config_v_${timestamp}.json`;
     const versionRef = ref(storage, `config/${versionFilename}`);
     
-    await uploadString(versionRef, JSON.stringify(saveData), 'raw', {
-      contentType: 'application/json',
-      cacheControl: 'public, max-age=31536000',
-      customMetadata: { version: String(timestamp) }
+    await uploadBytes(versionRef, contentBlob, {
+        contentType: 'application/json',
+        cacheControl: 'public, max-age=31536000', // Cache forever
+        customMetadata: { version: String(timestamp) }
     });
 
     // 2. Pointer File (Force Metadata to fix Caching)
+    // This file MUST NOT be cached, or users see old versions.
     const pointerRef = ref(storage, 'config/current.json');
-    await uploadString(pointerRef, JSON.stringify({ version: versionFilename, updatedAt: timestamp }), 'raw', {
-      contentType: 'application/json',
-      cacheControl: 'no-cache, no-store, max-age=0' 
-    });
+    const pointerData = JSON.stringify({ version: versionFilename, updatedAt: timestamp });
+    const pointerBlob = new Blob([pointerData], { type: 'application/json' });
+    
+    // Upload with strict metadata
+    await uploadBytes(pointerRef, pointerBlob, strictMetadata);
 
-    // 3. Legacy Backup (Force Metadata) - CRITICAL FOR FALLBACK
+    // 3. Legacy Backup (Force Metadata)
+    // This is used by the Direct HTTP fallback. It MUST NOT be cached.
     const legacyRef = ref(storage, 'config/site_config.json');
-    await uploadString(legacyRef, JSON.stringify(saveData), 'raw', {
-      contentType: 'application/json',
-      cacheControl: 'no-cache, no-store, max-age=0'
-    });
+    await uploadBytes(legacyRef, contentBlob, strictMetadata);
     
     setSyncError(null);
+    console.log("☁️ SITE CONTEXT: Saved successfully with strict metadata.");
   }, []);
 
   const publishSite = async () => {
