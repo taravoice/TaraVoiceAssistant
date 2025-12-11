@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { storage, ensureAuth, bucketName } from '../firebase';
-import { ref, getDownloadURL, listAll, uploadBytes, updateMetadata } from 'firebase/storage';
+import { ref, getDownloadURL, listAll, uploadBytes } from 'firebase/storage';
 
 export interface CustomSection {
   id: string;
@@ -138,10 +138,36 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchLatestConfig = async () => {
       let fetchedConfig = null;
 
-      // Strategy A: LIST ALL FILES (The "Truth" Strategy)
+      // Strategy A: LIGHTWEIGHT POINTER (Best for Mobile/Slow Connections)
+      // Tries to read config/current.json via raw HTTP to find the filename
+      if (bucketName) {
+        try {
+            console.log("[SiteContext] Strategy A: Fetching Pointer via HTTP...");
+            const timestamp = Date.now();
+            const pointerUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fcurrent.json?alt=media&t=${timestamp}`;
+            const pointerRes = await fetch(pointerUrl, { cache: 'no-store' });
+            
+            if (pointerRes.ok) {
+                const pointerData = await pointerRes.json();
+                if (pointerData.version) {
+                    console.log("[SiteContext] Pointer found:", pointerData.version);
+                    const fileUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2F${pointerData.version}?alt=media`;
+                    const fileRes = await fetch(fileUrl);
+                    if (fileRes.ok) {
+                        fetchedConfig = await fileRes.json();
+                        return fetchedConfig; // Success
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn("[SiteContext] Strategy A failed (Pointer HTTP)", e);
+        }
+      }
+
+      // Strategy B: LIST ALL FILES (The "Truth" Strategy - Admin/Desktop)
       if (storage) {
           try {
-             console.log("[SiteContext] Strategy A: Listing config folder...");
+             console.log("[SiteContext] Strategy B: Listing config folder...");
              const configListRef = ref(storage, 'config/');
              const res = await listAll(configListRef);
              
@@ -159,16 +185,16 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
                  if (response.ok) fetchedConfig = await response.json();
              }
           } catch (e) {
-             console.warn("[SiteContext] Strategy A failed", e);
+             console.warn("[SiteContext] Strategy B failed (List SDK)", e);
           }
       }
 
       if (fetchedConfig) return fetchedConfig;
 
-      // Strategy B: LEGACY HTTP FETCH (Fallback)
+      // Strategy C: LEGACY HTTP FETCH (Last Resort)
       if (bucketName) {
           try {
-              console.log("[SiteContext] Strategy B: Fetching legacy backup via HTTP...");
+              console.log("[SiteContext] Strategy C: Fetching legacy backup via HTTP...");
               const timestamp = Date.now();
               const random = Math.random().toString(36).substring(7);
               const legacyUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fsite_config.json?alt=media&t=${timestamp}_${random}`;
@@ -176,7 +202,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const res = await fetch(legacyUrl, { cache: 'no-store' });
               if (res.ok) return await res.json();
           } catch (e) {
-              console.warn("[SiteContext] Strategy B failed", e);
+              console.warn("[SiteContext] Strategy C failed", e);
           }
       }
 
@@ -263,15 +289,23 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     
     // 1. Versioned Config
-    const versionRef = ref(storage, `config/site_config_v_${timestamp}.json`);
+    const versionFilename = `site_config_v_${timestamp}.json`;
+    const versionRef = ref(storage, `config/${versionFilename}`);
     await uploadBytes(versionRef, contentBlob, immutableMetadata);
 
-    // 2. Legacy Backup (Crucial for fallback)
+    // 2. Pointer File (config/current.json)
+    // IMPORTANT: Saving this allows Strategy A (Lightweight) to work
+    const pointerData = { version: versionFilename, updatedAt: timestamp };
+    const pointerBlob = new Blob([JSON.stringify(pointerData)], { type: 'application/json' });
+    const pointerRef = ref(storage, 'config/current.json');
+    await uploadBytes(pointerRef, pointerBlob, noCacheMetadata);
+
+    // 3. Legacy Backup (Fallback)
     const legacyRef = ref(storage, 'config/site_config.json');
     await uploadBytes(legacyRef, contentBlob, noCacheMetadata);
     
     setSyncError(null);
-    console.log("☁️ SITE CONTEXT: Saved successfully (Base64 Mode).");
+    console.log("☁️ SITE CONTEXT: Saved successfully (Base64 Mode with Pointer).");
   }, []);
 
   const publishSite = async () => {
