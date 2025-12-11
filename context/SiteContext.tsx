@@ -122,7 +122,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!storage) return null;
     try {
        await ensureAuth();
-       // Fetch pointer
        const pointerRef = ref(storage, 'config/current.json');
        const pointerUrl = await getDownloadURL(pointerRef);
        const pointerRes = await fetch(`${pointerUrl}&t=${Date.now()}`);
@@ -165,12 +164,26 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try { localConfig = JSON.parse(localStr); } catch (e) { }
     }
 
+    // 4. Retrieve Last Verified Publish Timestamp
+    const lastPublished = parseInt(localStorage.getItem('tara_last_published') || '0');
+
     if (cloudConfig) {
-       // Cloud Found: Decide between Cloud and Draft
+       // Compare Cloud vs Local
        if (localConfig && (localConfig.updatedAt || 0) > (cloudConfig.updatedAt || 0)) {
-         console.log("📝 Init: Local draft is newer. Resuming draft.");
-         setContent({ ...cloudConfig, ...localConfig, gallery: cloudConfig.gallery || [] });
-         setHasUnsavedChanges(true);
+         
+         // Fix for "Active Button after Login": 
+         // If local matches the last time we explicitly published, we are actually synced.
+         // The cloud is just providing stale data from CDN. Ignore cloud stale data.
+         if (localConfig.updatedAt === lastPublished) {
+             console.log("📝 Init: Local matches last publish. Treating as Synced (Cloud Stale).");
+             setContent({ ...cloudConfig, ...localConfig, gallery: cloudConfig.gallery || [] });
+             setHasUnsavedChanges(false);
+         } else {
+             console.log("📝 Init: Local draft is newer and unsaved.");
+             setContent({ ...cloudConfig, ...localConfig, gallery: cloudConfig.gallery || [] });
+             setHasUnsavedChanges(true);
+         }
+
        } else {
          console.log("☁️ Init: Synced to Cloud.");
          setContent({ ...initialContent, ...cloudConfig });
@@ -178,11 +191,16 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
          setHasUnsavedChanges(false);
        }
     } else {
-       // No Cloud Data Available (Error/Offline) -> FORCE LOCAL FALLBACK
+       // Offline / Error Fallback
        if (localConfig) {
           console.log("⚠️ Init: Cloud unreachable. Forcing local draft.");
           setContent({ ...initialContent, ...localConfig });
-          setHasUnsavedChanges(true); // Treat as unsaved since unverified
+          // If offline, check against last publish too
+          if (localConfig.updatedAt === lastPublished) {
+              setHasUnsavedChanges(false);
+          } else {
+              setHasUnsavedChanges(true);
+          }
        } else {
           console.log("❌ Init: No data found anywhere.");
        }
@@ -215,7 +233,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     await ensureAuth();
     const { gallery, ...saveData } = newContent;
-    const timestamp = Date.now();
+    const timestamp = saveData.updatedAt; // Use the timestamp set by publishSite
     
     // 1. Versioned Config
     const versionFilename = `site_config_v_${timestamp}.json`;
@@ -249,6 +267,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
        updatedAt: timestamp
      };
      
+     // Save Last Published Timestamp LOCALLY to prevent stale cloud data from causing confusion
+     localStorage.setItem('tara_last_published', timestamp.toString());
+
      await saveToCloud(contentToPublish);
      
      setContent(contentToPublish);
@@ -290,17 +311,15 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
-    // Robust URL cleaning: remove timestamps, but preserve Firebase 'alt=media' and 'token'
     let cleanUrl = url;
     try {
         if (url.includes('firebasestorage')) {
             const urlObj = new URL(url);
-            urlObj.searchParams.delete('t'); // Remove cache buster
+            urlObj.searchParams.delete('t'); 
             urlObj.searchParams.delete('nocache');
-            // Do NOT delete 'alt' or 'token'
+            // IMPORTANT: Preserve 'alt' and 'token'
             cleanUrl = urlObj.toString();
         } else {
-            // For external URLs (Unsplash), remove query params if needed or keep
             cleanUrl = url.split('?')[0]; 
         }
     } catch (e) { cleanUrl = url; }
