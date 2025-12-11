@@ -46,15 +46,14 @@ const AdminLayout: React.FC = () => {
         <div className="p-6 border-b border-slate-800 flex items-center space-x-3">
             <img 
               src={adminLogoSrc} 
-              className="h-8 w-auto brightness-0 invert object-contain" 
+              className="h-8 w-auto object-contain" 
               alt="Admin Logo" 
               onError={(e) => {
-                // If local logo is missing, fallback to text
-                const img = e.target as HTMLImageElement;
-                img.style.display = 'none';
+                 // Fallback text if logo fails
+                 console.warn("Admin logo failed to load at /logo.png");
               }}
             />
-            {/* Show text label if image fails to load */}
+            {/* Show text label alongside logo */}
             <span className="font-bold text-lg">Admin</span>
         </div>
         
