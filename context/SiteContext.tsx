@@ -1,7 +1,6 @@
-
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { storage, ensureAuth, bucketName } from '../firebase';
-import { ref, uploadBytes } from 'firebase/storage';
+import { storage, ensureAuth } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export interface CustomSection {
   id: string;
@@ -89,7 +88,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
-  // HELPER: Safe LocalStorage Write
   const safeSetItem = (key: string, value: string) => {
     try {
       localStorage.setItem(key, value);
@@ -98,7 +96,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // HELPER: Compress Base64
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -110,7 +107,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
-          const MAX_WIDTH = 800;
+          const MAX_WIDTH = 800; // Optimize for mobile
           if (width > MAX_WIDTH) {
             height *= MAX_WIDTH / width;
             width = MAX_WIDTH;
@@ -119,7 +116,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           ctx?.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.7));
+          resolve(canvas.toDataURL('image/jpeg', 0.6));
         };
         img.onerror = (err) => reject(err);
       };
@@ -127,75 +124,73 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  // --- ROBUST HTTP FETCH (Strategy: Pointer -> File) ---
-  const fetchLatestConfig = async () => {
-      if (!bucketName) return null;
-
-      try {
-          // 1. Fetch Pointer (current.json) with CACHE BUSTING
-          const t = Date.now();
-          const pointerUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fcurrent.json?alt=media&t=${t}`;
-          
-          console.log("[SiteContext] Fetching pointer:", pointerUrl);
-          const pointerRes = await fetch(pointerUrl, { cache: 'no-store' });
-          
-          if (pointerRes.ok) {
-              const pointerData = await pointerRes.json();
-              if (pointerData.version) {
-                  // 2. Fetch the Actual Config File
-                  const fileUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2F${pointerData.version}?alt=media`;
-                  console.log("[SiteContext] Downloading config:", pointerData.version);
-                  
-                  const fileRes = await fetch(fileUrl);
-                  if (fileRes.ok) return await fileRes.json();
-              }
-          }
-      } catch (e) {
-          console.warn("[SiteContext] Pointer fetch failed, trying legacy...", e);
-      }
-
-      // 3. Fallback to Legacy File
-      try {
-          const legacyUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fsite_config.json?alt=media&t=${Date.now()}`;
-          const res = await fetch(legacyUrl);
-          if (res.ok) return await res.json();
-      } catch (e) {}
-
-      return null;
-  };
-
   // --- INIT ---
   const initSite = useCallback(async () => {
     setIsStorageConfigured(!!storage);
 
-    // 1. Try Local Draft
+    // 1. Load Local Draft Immediately (Fastest UI response)
     let localConfig: SiteContent | null = null;
     const localStr = localStorage.getItem('tara_site_config');
     if (localStr) {
       try { localConfig = JSON.parse(localStr); } catch (e) {}
     }
+    
+    // Set initial state from local draft if available
+    if (localConfig) {
+        setContent(prev => ({ ...prev, ...localConfig }));
+    }
 
-    // 2. Try Cloud
-    const cloudConfig = await fetchLatestConfig();
+    // 2. Try to fetch from Cloud
+    let cloudConfig: any = null;
+    if (storage) {
+       // Attempt non-blocking auth (ignoring errors for public read)
+       ensureAuth().catch(() => {});
 
+       try {
+           // A. Try Pointer (SDK) - Most robust method
+           const pointerRef = ref(storage, 'config/current.json');
+           const pointerUrl = await getDownloadURL(pointerRef);
+           // Add cache bust to URL
+           const pRes = await fetch(`${pointerUrl}${pointerUrl.includes('?') ? '&' : '?'}t=${Date.now()}`);
+           if (pRes.ok) {
+              const pData = await pRes.json();
+              if (pData.version) {
+                 console.log("[SiteContext] Found version:", pData.version);
+                 const vRef = ref(storage, `config/${pData.version}`);
+                 const vUrl = await getDownloadURL(vRef);
+                 const vRes = await fetch(vUrl);
+                 if (vRes.ok) cloudConfig = await vRes.json();
+              }
+           }
+       } catch (e) {
+           console.warn("[SiteContext] SDK Fetch failed. Trying Legacy Fallback.", e);
+       }
+       
+       // B. Legacy Fallback (SDK) - If pointer fails
+       if (!cloudConfig) {
+          try {
+             const legacyRef = ref(storage, 'config/site_config.json');
+             const lUrl = await getDownloadURL(legacyRef);
+             const lRes = await fetch(lUrl);
+             if (lRes.ok) cloudConfig = await lRes.json();
+          } catch(e) {}
+       }
+    }
+
+    // 3. Resolve Conflict (Local vs Cloud)
     if (cloudConfig) {
        const cloudTime = cloudConfig.updatedAt || 0;
        const localTime = localConfig?.updatedAt || 0;
        const lastPublished = parseInt(localStorage.getItem('tara_last_published') || '0');
 
-       // Check if we are "Synced"
-       if (localTime > cloudTime && Math.abs(localTime - lastPublished) < 2000) {
-           console.log("[SiteContext] Synced state verified.");
-           setHasUnsavedChanges(false);
-           if (localConfig) setContent({ ...initialContent, ...localConfig });
-       } 
-       else if (localTime > cloudTime) {
-           console.log("[SiteContext] Local Draft is newer.");
+       // Check if local is newer AND different from what we last published
+       // Using a small buffer (1000ms) for time comparison
+       if (localTime > cloudTime && Math.abs(localTime - lastPublished) > 1000) {
+           console.log("[SiteContext] Local Draft is newer. Preserving.");
            setHasUnsavedChanges(true);
-           if (localConfig) setContent({ ...initialContent, ...localConfig });
+           // We already set local content at start, just ensure flags are correct
        } else {
-           console.log("[SiteContext] Using Cloud Data.");
-           // Merge to ensure no data loss
+           console.log("[SiteContext] Synced to Cloud.");
            const merged = { 
                ...initialContent, 
                ...cloudConfig, 
@@ -207,13 +202,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
            safeSetItem('tara_last_published', cloudTime.toString());
            setHasUnsavedChanges(false);
        }
-    } else {
-       // Cloud failed (offline/mobile block), use Local if available
-       if (localConfig) {
-           setContent({ ...initialContent, ...localConfig });
-           setHasUnsavedChanges(true); // Assume unsaved if we can't verify cloud
-       }
+    } else if (localConfig) {
+       // Offline mode / Cloud fetch failed but we have local data
+       setHasUnsavedChanges(true);
     }
+    
     setIsInitialized(true);
   }, []);
 
@@ -221,7 +214,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initSite();
   }, [initSite]);
 
-  // --- SAVE ---
   const saveToCloud = useCallback(async (newContent: SiteContent) => {
     if (!storage) throw new Error("Storage not configured.");
 
@@ -230,22 +222,22 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const jsonString = JSON.stringify(saveData);
     const contentBlob = new Blob([jsonString], { type: 'application/json' });
 
-    // Metadata: Force NO CACHE on pointer
+    // Metadata - Critical for preventing caching
     const noCacheMeta = { contentType: 'application/json', cacheControl: 'no-cache, no-store, max-age=0' };
     const longCacheMeta = { contentType: 'application/json', cacheControl: 'public, max-age=31536000' };
 
-    // 1. Upload Versioned File (Long Cache)
+    // 1. Upload Version (Cacheable)
     const versionFilename = `site_config_v_${timestamp}.json`;
     const versionRef = ref(storage, `config/${versionFilename}`);
     await uploadBytes(versionRef, contentBlob, longCacheMeta);
 
-    // 2. Upload Pointer File (No Cache)
+    // 2. Upload Pointer (Never Cache)
     const pointerData = { version: versionFilename, updatedAt: timestamp };
     const pointerBlob = new Blob([JSON.stringify(pointerData)], { type: 'application/json' });
     const pointerRef = ref(storage, 'config/current.json');
     await uploadBytes(pointerRef, pointerBlob, noCacheMeta);
 
-    // 3. Upload Legacy File (No Cache)
+    // 3. Upload Legacy (Backup)
     const legacyRef = ref(storage, 'config/site_config.json');
     await uploadBytes(legacyRef, contentBlob, noCacheMeta);
 
@@ -260,14 +252,17 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      const timestamp = Date.now();
      const contentToPublish = { ...content, updatedAt: timestamp };
      
+     // Save locally first
      safeSetItem('tara_last_published', timestamp.toString());
      safeSetItem('tara_site_config', JSON.stringify(contentToPublish));
      setContent(contentToPublish);
      setHasUnsavedChanges(false);
 
+     // Push to cloud
      await saveToCloud(contentToPublish);
   };
 
+  // Helper to update state and save draft
   const updateStateAndDraft = (updater: (prev: SiteContent) => SiteContent) => {
      setContent(prev => {
         const next = updater(prev);
