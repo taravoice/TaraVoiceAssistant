@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useSite } from '../../context/SiteContext';
 import { ImageGalleryModal } from '../../components/ImageGalleryModal';
-import { Info, AlertTriangle, ImageOff } from 'lucide-react';
+import { Info, AlertTriangle, ImageOff, MonitorSmartphone } from 'lucide-react';
 
 const imageSlots = [
   { key: 'logo', page: 'Global', section: 'Website Logo' },
@@ -59,10 +59,10 @@ const MediaManager: React.FC = () => {
       )}
 
       <div className="bg-[#0097b2]/5 p-4 rounded-xl border border-[#0097b2]/20 text-slate-800 flex items-start shadow-sm">
-        <Info className="w-5 h-5 mr-3 mt-0.5 shrink-0 text-[#0097b2]" />
+        <MonitorSmartphone className="w-5 h-5 mr-3 mt-0.5 shrink-0 text-[#0097b2]" />
         <p className="text-sm leading-relaxed">
-          <strong>Draft Mode:</strong> Selecting an image here updates your local preview instantly. 
-          Use the <strong>"Publish Live"</strong> button at the top of the page to push these changes to the live website.
+          <strong>Browser-Specific Drafts:</strong> Changes made here are saved to <u>this browser only</u>. 
+          If you open the Admin Panel in another browser (e.g., Edge vs Chrome), you will not see these changes until you click <strong>"Publish Live"</strong>.
         </p>
       </div>
 
