@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Phone, Mail, Facebook, Twitter, Linkedin, Instagram, Youtube } from 'lucide-react';
@@ -21,14 +22,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     return location.pathname === path ? 'text-[#0097b2] font-semibold' : 'text-slate-600 hover:text-[#0097b2]';
   };
 
-  // Safe logo construction with dynamic fallback
+  // Safe logo construction
   const getLogoUrl = () => {
-    const rawUrl = content.images.logo || '/logo.png';
+    const rawUrl = content.images.logo;
+    // If no logo set, use fallback
     if (!rawUrl || rawUrl === '') return '/logo.png';
-    // Only bust cache for external (Firebase) URLs
+    // If external URL (unlikely in Base64 mode, but supported), bust cache
     if (rawUrl.startsWith('http')) {
        return `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}t=${content.updatedAt}`;
     }
+    // Base64 or local path
     return rawUrl;
   };
 
@@ -44,11 +47,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 key={finalLogoUrl}
                 src={finalLogoUrl} 
                 alt="Tara Voice Assistant" 
-                className="h-12 w-auto object-contain transition-all duration-300"
+                className="h-10 md:h-12 w-auto object-contain transition-all duration-300"
                 onError={(e) => {
-                   // Fallback if the sync URL is broken
+                   // Fallback only if the src isn't already the fallback
                    const img = e.target as HTMLImageElement;
-                   if (img.src !== '/logo.png') img.src = '/logo.png';
+                   if (!img.src.includes('/logo.png')) img.src = '/logo.png';
                 }}
               />
             </Link>
