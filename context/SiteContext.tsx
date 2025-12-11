@@ -89,6 +89,16 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
+  // HELPER: Safe LocalStorage Write (Prevents Quota Crashes on Mobile)
+  const safeSetItem = (key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e: any) {
+      console.warn(`[SiteContext] Storage Quota Exceeded or Blocked. Data not cached locally. (${e.message})`);
+      // We do NOT throw here, allowing the app to continue running in memory.
+    }
+  };
+
   // HELPER: Compress and Convert to Base64
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -102,8 +112,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
           let width = img.width;
           let height = img.height;
           
-          // Max width 1000px to save space
-          const MAX_WIDTH = 1000;
+          // Max width 800px to save space for Base64 storage
+          const MAX_WIDTH = 800;
           if (width > MAX_WIDTH) {
             height *= MAX_WIDTH / width;
             width = MAX_WIDTH;
@@ -210,14 +220,15 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
            const merged = { 
                ...initialContent, 
                ...cloudConfig,
-               // Trust cloud images since they are now embedded data
-               images: { ...initialImages, ...cloudConfig.images }
+               // Deep merge images and gallery to ensure no data loss
+               images: { ...initialImages, ...cloudConfig.images },
+               gallery: cloudConfig.gallery || [] 
            };
            
            setContent(merged);
-           localStorage.setItem('tara_site_config', JSON.stringify(merged));
+           safeSetItem('tara_site_config', JSON.stringify(merged));
            setHasUnsavedChanges(false);
-           localStorage.setItem('tara_last_published', cloudTime.toString());
+           safeSetItem('tara_last_published', cloudTime.toString());
        }
     } else {
        console.log("[SiteContext] Failed to load cloud config. Staying with local or default.");
@@ -233,8 +244,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const saveToCloud = useCallback(async (newContent: SiteContent) => {
     if (!storage) throw new Error("Storage not configured.");
     
-    // We strictly use uploadBytes now
-    const { gallery, ...saveData } = newContent;
+    // SAVE EVERYTHING: Include gallery since images are now Base64 encoded strings in the JSON
+    const saveData = newContent;
     const timestamp = saveData.updatedAt; 
     
     const jsonString = JSON.stringify(saveData);
@@ -275,8 +286,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
        updatedAt: timestamp
      };
      
-     localStorage.setItem('tara_last_published', timestamp.toString());
-     localStorage.setItem('tara_site_config', JSON.stringify(contentToPublish));
+     safeSetItem('tara_last_published', timestamp.toString());
+     safeSetItem('tara_site_config', JSON.stringify(contentToPublish));
      setContent(contentToPublish);
      setHasUnsavedChanges(false);
 
@@ -286,7 +297,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateStateAndDraft = (updater: (prev: SiteContent) => SiteContent) => {
      setContent(prev => {
         const next = updater(prev);
-        localStorage.setItem('tara_site_config', JSON.stringify(next));
+        safeSetItem('tara_site_config', JSON.stringify(next));
         return next;
      });
      setHasUnsavedChanges(true);
@@ -317,7 +328,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
-    // In Base64 mode, 'url' is the base64 string. No cleaning needed.
+    // In Base64 mode, 'url' is the base64 string.
     updateStateAndDraft(prev => ({
       ...prev,
       images: { ...prev.images, [key]: url },
@@ -333,15 +344,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // This bypasses Firebase Storage for images entirely.
       const base64String = await compressImage(file);
       
-      // Store locally in the gallery array
-      // Note: We are prepending to the gallery list in the config
-      setContent(prev => ({ 
+      // Store locally in the gallery array and SAVE DRAFT
+      updateStateAndDraft(prev => ({ 
           ...prev, 
-          gallery: [base64String, ...prev.gallery] 
+          gallery: [base64String, ...prev.gallery],
+          updatedAt: Date.now()
       }));
-      
-      // Trigger a draft save so it persists
-      setHasUnsavedChanges(true);
       
     } catch (e: any) {
        console.error("Image processing failed:", e);
@@ -351,8 +359,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const removeFromGallery = async (url: string) => {
      // Just filter it out of the array
-     setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
-     setHasUnsavedChanges(true);
+     updateStateAndDraft(prev => ({ 
+         ...prev, 
+         gallery: prev.gallery.filter(i => i !== url),
+         updatedAt: Date.now()
+     }));
   };
 
   const login = (input: string) => {
