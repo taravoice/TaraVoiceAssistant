@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { storage, ensureAuth, bucketName } from '../firebase';
-import { ref, getDownloadURL, listAll, deleteObject, uploadString, uploadBytes } from 'firebase/storage';
+import { ref, getDownloadURL, listAll, deleteObject, uploadString, uploadBytes, updateMetadata } from 'firebase/storage';
 
 export interface CustomSection {
   id: string;
@@ -93,9 +93,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fixUrl = (u: string) => {
       if (!u || typeof u !== 'string' || !u.includes('firebasestorage')) return u;
       try {
-          if (u.includes('alt=media')) return u;
-          const separator = u.includes('?') ? '&' : '?';
-          return `${u}${separator}alt=media`;
+          // If it's a direct storage link, ensure alt=media
+          if (!u.includes('alt=media')) {
+              const separator = u.includes('?') ? '&' : '?';
+              return `${u}${separator}alt=media`;
+          }
+          return u;
       } catch (e) {
           return u;
       }
@@ -106,6 +109,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Strategy A: List All Files (Admin/SDK) - Bypasses CDN Cache entirely
       if (storage) {
           try {
+             // We don't await auth here to prevent blocking strict browsers
              const configListRef = ref(storage, 'config/');
              const res = await listAll(configListRef);
              
@@ -137,6 +141,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
               console.log("[SiteContext] Trying Legacy HTTP fetch...");
               // We add a random number to FORCE bypass any edge cache
+              // IMPORTANT: This relies on site_config.json being kept up to date
               const legacyUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fsite_config.json?alt=media&t=${Date.now()}_${Math.random()}`;
               const res = await fetch(legacyUrl, { cache: 'no-store' });
               if (res.ok) return await res.json();
@@ -158,7 +163,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (localStr) {
       try { 
           localConfig = JSON.parse(localStr);
-          if (localConfig) {
+          if (localConfig && localConfig.images) {
              // Ensure images are valid immediately
              Object.keys(localConfig.images).forEach(k => {
                  localConfig!.images[k] = fixUrl(localConfig!.images[k]);
@@ -197,20 +202,15 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
        else {
            console.log("[SiteContext] Cloud is newer/equal. Overwriting local.");
            const merged = { ...initialContent, ...cloudConfig };
-           // IMPORTANT: If cloud has empty images but local has valid ones, this might be a split-brain error.
-           // However, trusting the latest timestamp is usually safer.
            setContent(merged);
            localStorage.setItem('tara_site_config', JSON.stringify(merged));
            setHasUnsavedChanges(false);
            localStorage.setItem('tara_last_published', cloudTime.toString());
        }
     } else {
-       console.log("[SiteContext] Failed to load cloud config.");
-       if (!localConfig) {
-           // If no cloud and no local, we are truly empty.
-           console.log("[SiteContext] Starting fresh.");
-       } else {
-           setHasUnsavedChanges(true);
+       console.log("[SiteContext] Failed to load cloud config. Staying with local or default.");
+       if (localConfig) {
+           setHasUnsavedChanges(true); // Assuming local is a draft if cloud failed
        }
     }
 
@@ -263,7 +263,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       cacheControl: 'no-cache, no-store, max-age=0' 
     });
 
-    // 3. Legacy Backup (Force Metadata)
+    // 3. Legacy Backup (Force Metadata) - CRITICAL FOR FALLBACK
     const legacyRef = ref(storage, 'config/site_config.json');
     await uploadString(legacyRef, JSON.stringify(saveData), 'raw', {
       contentType: 'application/json',
