@@ -5,7 +5,7 @@ import { LayoutDashboard, FileText, Image as ImageIcon, Settings as SettingsIcon
 import { useSite } from '../../context/SiteContext';
 
 const AdminLayout: React.FC = () => {
-  const { isAuthenticated, logout, content, isStorageConfigured, syncError, hasUnsavedChanges, publishSite } = useSite();
+  const { isAuthenticated, logout, isStorageConfigured, syncError, hasUnsavedChanges, publishSite } = useSite();
   const location = useLocation();
   const [isPublishing, setIsPublishing] = useState(false);
   const [justPublished, setJustPublished] = useState(false);
@@ -35,10 +35,9 @@ const AdminLayout: React.FC = () => {
     { label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
   ];
 
-  // Logic to handle Logo display (Dynamic vs Fallback)
-  const logoSrc = content.images.logo && content.images.logo !== '' 
-    ? content.images.logo 
-    : '/logo.png'; // Fallback to local file if not set in CMS
+  // Force Admin Logo to use local file (Decoupled from CMS)
+  // This ensures the Admin sidebar always uses the specific file in 'public/logo.png'
+  const adminLogoSrc = '/logo.png';
 
   return (
     <div className="min-h-screen bg-slate-100 flex">
@@ -46,16 +45,17 @@ const AdminLayout: React.FC = () => {
       <aside className="w-64 bg-slate-900 text-white flex-shrink-0 hidden md:flex flex-col">
         <div className="p-6 border-b border-slate-800 flex items-center space-x-3">
             <img 
-              src={logoSrc} 
+              src={adminLogoSrc} 
               className="h-8 w-auto brightness-0 invert object-contain" 
               alt="Admin Logo" 
               onError={(e) => {
-                // If even the dynamic URL fails, hide it or fallback text
+                // If local logo is missing, fallback to text
                 const img = e.target as HTMLImageElement;
                 img.style.display = 'none';
               }}
             />
-            {(!logoSrc || logoSrc === '/logo.png') && <span className="font-bold text-lg">Admin</span>}
+            {/* Show text label if image fails to load */}
+            <span className="font-bold text-lg">Admin</span>
         </div>
         
         <nav className="flex-grow p-4 space-y-2">
