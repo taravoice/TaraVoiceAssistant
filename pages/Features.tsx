@@ -85,7 +85,7 @@ const Features: React.FC = () => {
                 </div>
                 {currentImg && (
                   <div className="lg:w-1/2">
-                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 group">
+                    <div className="relative rounded-2xl overflow-hidden group">
                       <MediaRenderer 
                         src={currentImg} 
                         alt={feature.title} 
