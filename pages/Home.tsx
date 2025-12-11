@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Calendar, PhoneCall, MessageSquare, Clock, BarChart3, Mic2 } from 'lucide-react';
 import { Button } from '../components/Button';
 import { useSite } from '../context/SiteContext';
+import { MediaRenderer } from '../components/MediaRenderer';
 
 const Home: React.FC = () => {
   const { content } = useSite();
@@ -21,12 +22,19 @@ const Home: React.FC = () => {
   return (
     <div className="w-full">
       {/* Hero Section */}
-      <section className="relative bg-[#d9d9d9] overflow-hidden">
-        <div 
-          key={getBustedUrl(content.images.homeHeroBg)} 
-          className="absolute inset-0 bg-cover bg-center opacity-5 transition-all duration-500"
-          style={{ backgroundImage: content.images.homeHeroBg ? `url('${getBustedUrl(content.images.homeHeroBg)}')` : 'none' }}
-        ></div>
+      <section className="relative bg-[#d9d9d9] overflow-hidden min-h-[600px] flex items-center">
+        {/* Background Layer - Supports Video or Image */}
+        <div className="absolute inset-0 z-0">
+           {content.images.homeHeroBg && (
+             <MediaRenderer 
+               src={getBustedUrl(content.images.homeHeroBg)} 
+               alt="Hero Background"
+               className="w-full h-full object-cover opacity-5"
+               videoClassName="w-full h-full object-cover opacity-5"
+             />
+           )}
+        </div>
+
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-32 relative z-10">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8 animate-fade-in-up">
@@ -93,7 +101,11 @@ const Home: React.FC = () => {
                  </div>
                  {section.image && (
                    <div className="order-1 md:order-2">
-                      <img src={getBustedUrl(section.image)} alt={section.title} className="rounded-2xl shadow-lg w-full h-auto object-cover" />
+                      <MediaRenderer 
+                        src={getBustedUrl(section.image)} 
+                        alt={section.title} 
+                        className="rounded-2xl shadow-lg w-full h-auto object-cover" 
+                      />
                    </div>
                  )}
               </div>
@@ -152,16 +164,14 @@ const Home: React.FC = () => {
              </div>
              <div className="grid grid-cols-2 gap-4">
                 {content.images.homeIndustry1 && (
-                  <img 
-                    key={getBustedUrl(content.images.homeIndustry1)}
+                  <MediaRenderer 
                     src={getBustedUrl(content.images.homeIndustry1)} 
                     className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity w-full h-48 object-cover" 
                     alt="Healthcare" 
                   />
                 )}
                 {content.images.homeIndustry2 && (
-                  <img 
-                    key={getBustedUrl(content.images.homeIndustry2)}
+                  <MediaRenderer 
                     src={getBustedUrl(content.images.homeIndustry2)} 
                     className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity mt-8 w-full h-48 object-cover" 
                     alt="Salon" 
