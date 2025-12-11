@@ -25,13 +25,14 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Safe logo construction
   const getLogoUrl = () => {
     const rawUrl = content.images.logo;
-    // If no logo set, use fallback
-    if (!rawUrl || rawUrl === '') return '/logo.png';
-    // If external URL (unlikely in Base64 mode, but supported), bust cache
+    // If explicitly empty, fallback to local logo.png
+    if (!rawUrl || rawUrl.trim() === '') return '/logo.png';
+    
+    // If it's a URL (http) or Base64 (data:), use it directly.
+    // For Base64, we don't need timestamps.
     if (rawUrl.startsWith('http')) {
        return `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}t=${content.updatedAt}`;
     }
-    // Base64 or local path
     return rawUrl;
   };
 
@@ -44,14 +45,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div className="flex justify-between items-center h-20">
             <Link to="/" className="flex items-center group">
               <img 
-                key={finalLogoUrl}
+                key={content.updatedAt} // Force re-render on content update
                 src={finalLogoUrl} 
                 alt="Tara Voice Assistant" 
                 className="h-10 md:h-12 w-auto object-contain transition-all duration-300"
                 onError={(e) => {
-                   // Fallback only if the src isn't already the fallback
+                   // Fallback logic: if image load fails (e.g. broken Base64), switch to local logo
                    const img = e.target as HTMLImageElement;
-                   if (!img.src.includes('/logo.png')) img.src = '/logo.png';
+                   if (img.src !== window.location.origin + '/logo.png') {
+                       img.src = '/logo.png';
+                   }
                 }}
               />
             </Link>
