@@ -1,9 +1,15 @@
+
 import React from 'react';
 import { Check, HelpCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/Button';
+import { useSite } from '../context/SiteContext';
+import { MediaRenderer } from '../components/MediaRenderer';
 
 const Pricing: React.FC = () => {
+  const { content } = useSite();
+  const customSections = content.customSections.filter(s => s.page === 'Pricing');
+
   return (
     <div className="bg-[#d9d9d9] min-h-screen">
       <div className="py-20 text-center">
@@ -53,6 +59,27 @@ const Pricing: React.FC = () => {
               </div>
            </div>
         </div>
+
+        {/* Custom Sections */}
+        {customSections.map((section) => (
+          <section key={section.id} className="py-20">
+              <div className="grid md:grid-cols-2 gap-12 items-center bg-white p-8 rounded-2xl shadow-sm">
+                 <div className="order-2 md:order-1">
+                    <h2 className="text-3xl font-bold text-slate-900 mb-6">{section.title}</h2>
+                    <p className="text-lg text-slate-600 leading-relaxed whitespace-pre-wrap">{section.content}</p>
+                 </div>
+                 {section.image && (
+                   <div className="order-1 md:order-2">
+                      <MediaRenderer 
+                        src={section.image} 
+                        alt={section.title} 
+                        className="rounded-2xl shadow-lg w-full h-auto object-cover" 
+                      />
+                   </div>
+                 )}
+              </div>
+          </section>
+        ))}
 
         {/* FAQ Section */}
         <div className="mt-24 max-w-3xl mx-auto">
