@@ -56,7 +56,7 @@ const staticImageMap: SiteImages = {
   homeHeroBg: '/images/home_hero.png',
   homeIndustry1: '/images/industry_1.png',
   homeIndustry2: '/images/industry_2.png',
-  feature1: '/images/feature_1.mp4',
+  feature1: '/images/feature_1.gif',
   feature2: '/images/feature_2.png',
   feature3: '/images/feature_3.png',
   feature4: '/images/feature_4.png',
