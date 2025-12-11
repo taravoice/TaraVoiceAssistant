@@ -4,6 +4,7 @@ import { Calendar, Network, Headset, RefreshCw, BarChart, Bot } from 'lucide-rea
 import { Button } from '../components/Button';
 import { Link } from 'react-router-dom';
 import { useSite } from '../context/SiteContext';
+import { MediaRenderer } from '../components/MediaRenderer';
 
 const Features: React.FC = () => {
   const { content } = useSite();
@@ -85,9 +86,8 @@ const Features: React.FC = () => {
                 {currentImg && (
                   <div className="lg:w-1/2">
                     <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-slate-200 group">
-                      <div className="absolute inset-0 bg-[#0097b2]/10 group-hover:bg-transparent transition-colors duration-500"></div>
-                      <img 
-                        key={currentImg}
+                      <div className="absolute inset-0 bg-[#0097b2]/10 group-hover:bg-transparent transition-colors duration-500 pointer-events-none z-10"></div>
+                      <MediaRenderer 
                         src={currentImg} 
                         alt={feature.title} 
                         className="w-full h-auto transform group-hover:scale-105 transition-transform duration-700 object-cover"
@@ -112,8 +112,7 @@ const Features: React.FC = () => {
                     </div>
                     {section.image && (
                       <div className="order-1 md:order-2">
-                        <img 
-                          key={sectionImg}
+                        <MediaRenderer 
                           src={sectionImg} 
                           alt={section.title} 
                           className="rounded-2xl shadow-lg w-full h-auto object-cover" 
