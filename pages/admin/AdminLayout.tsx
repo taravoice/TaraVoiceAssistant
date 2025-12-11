@@ -19,9 +19,9 @@ const AdminLayout: React.FC = () => {
     try {
       await publishSite();
       setJustPublished(true);
-      setTimeout(() => setJustPublished(false), 4000);
+      setTimeout(() => setJustPublished(false), 5000);
     } catch (e) {
-      alert("Publish failed. Check settings.");
+      alert("Publish failed. Please check your internet connection and settings.");
     } finally {
       setIsPublishing(false);
     }
@@ -35,13 +35,27 @@ const AdminLayout: React.FC = () => {
     { label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
   ];
 
+  // Logic to handle Logo display (Dynamic vs Fallback)
+  const logoSrc = content.images.logo && content.images.logo !== '' 
+    ? content.images.logo 
+    : '/logo.png'; // Fallback to local file if not set in CMS
+
   return (
     <div className="min-h-screen bg-slate-100 flex">
       {/* Sidebar */}
       <aside className="w-64 bg-slate-900 text-white flex-shrink-0 hidden md:flex flex-col">
         <div className="p-6 border-b border-slate-800 flex items-center space-x-3">
-            <img src={content.images.logo} className="h-8 w-auto brightness-0 invert" alt="Logo" />
-            <span className="font-bold text-lg">Admin</span>
+            <img 
+              src={logoSrc} 
+              className="h-8 w-auto brightness-0 invert object-contain" 
+              alt="Admin Logo" 
+              onError={(e) => {
+                // If even the dynamic URL fails, hide it or fallback text
+                const img = e.target as HTMLImageElement;
+                img.style.display = 'none';
+              }}
+            />
+            {(!logoSrc || logoSrc === '/logo.png') && <span className="font-bold text-lg">Admin</span>}
         </div>
         
         <nav className="flex-grow p-4 space-y-2">
@@ -121,7 +135,7 @@ const AdminLayout: React.FC = () => {
                 <button 
                   onClick={handlePublish}
                   disabled={isPublishing}
-                  className="bg-[#0097b2] hover:bg-[#007f96] text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-all"
+                  className="bg-[#0097b2] hover:bg-[#007f96] text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-all shadow-lg"
                 >
                    {isPublishing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                    {isPublishing ? 'Publishing...' : 'Publish Live'}
@@ -132,7 +146,7 @@ const AdminLayout: React.FC = () => {
           {justPublished && (
              <div className="bg-green-600 text-white px-8 py-2 flex items-center justify-center animate-fade-in-down">
                 <CheckCircle2 className="w-5 h-5 mr-2" />
-                <span className="font-bold">Site Published! Visitors will see changes on refresh.</span>
+                <span className="font-bold">Success! Changes are now live for all visitors.</span>
              </div>
           )}
         </div>
