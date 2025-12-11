@@ -130,16 +130,20 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log("[SiteContext] Attempting Raw HTTP Fetch...");
         // Construct direct URL to Firebase Storage REST API
         // This bypasses the JS SDK entirely
-        const pointerUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fcurrent.json?alt=media&t=${Date.now()}`;
+        const timestamp = Date.now();
+        const pointerUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fcurrent.json?alt=media&t=${timestamp}`;
         
-        const pointerRes = await fetch(pointerUrl, { cache: 'no-store' });
+        const pointerRes = await fetch(pointerUrl, { 
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' }
+        });
         if (!pointerRes.ok) throw new Error("Raw pointer fetch failed");
         
         const pointerData = await pointerRes.json();
         
         if (pointerData.version) {
              console.log("[SiteContext] Found version (Raw):", pointerData.version);
-             const configUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2F${pointerData.version}?alt=media&t=${Date.now()}`;
+             const configUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2F${pointerData.version}?alt=media&t=${timestamp}`;
              const configRes = await fetch(configUrl, { cache: 'no-store' });
              if (!configRes.ok) throw new Error("Raw config fetch failed");
              return await configRes.json();
@@ -148,6 +152,20 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn("[SiteContext] Raw fetch failed:", e);
     }
     return null;
+  };
+
+  // --- STRATEGY 3: Legacy/Backup Fetch (If versioning fails completely) ---
+  const fetchLegacyConfig = async () => {
+      if (!bucketName) return null;
+      try {
+          console.log("[SiteContext] Attempting Legacy Backup Fetch...");
+          const url = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fsite_config.json?alt=media&t=${Date.now()}`;
+          const res = await fetch(url, { cache: 'no-store' });
+          if (!res.ok) return null;
+          return await res.json();
+      } catch (e) {
+          return null;
+      }
   };
 
   // --- Initialize site ---
@@ -167,13 +185,18 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (e) {}
     }
 
-    // STEP 2: FETCH CLOUD CONFIG (Dual Strategy)
+    // STEP 2: FETCH CLOUD CONFIG (Multi-Strategy)
     if (storage) {
         let cloudConfig = await fetchSDKConfig();
         
-        // Fallback to Raw HTTP if SDK failed (e.g., blocked by browser privacy)
+        // Fallback 1: Raw HTTP if SDK failed
         if (!cloudConfig) {
              cloudConfig = await fetchRawConfig();
+        }
+
+        // Fallback 2: Legacy file if Versioning failed
+        if (!cloudConfig) {
+             cloudConfig = await fetchLegacyConfig();
         }
 
         // STEP 3: RESOLVE CONFLICTS
@@ -182,14 +205,14 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
            const localTime = localConfig?.updatedAt || 0;
            
            // If Local is NEWER than Cloud, KEEP LOCAL (Draft Mode)
-           // But verify if it matches what we last published
            if (localTime > cloudTime) {
                const lastPublished = parseInt(localStorage.getItem('tara_last_published') || '0');
                
                // Check if local matches what we *think* we last published
                // If yes, we are synced, just cloud is stale (CDN delay)
-               if (Math.abs(localTime - lastPublished) < 5000) {
-                   console.log("[SiteContext] Local matches last publish. Synced.");
+               // Increased window to 10s to handle minor drift
+               if (Math.abs(localTime - lastPublished) < 10000) {
+                   console.log("[SiteContext] Local matches last publish. Synced (Cloud Lag).");
                    setHasUnsavedChanges(false);
                } else {
                    console.log("[SiteContext] Local draft is newer. Keeping draft.");
@@ -203,10 +226,14 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
                setContent(merged);
                localStorage.setItem('tara_site_config', JSON.stringify(merged));
                setHasUnsavedChanges(false);
+               // Also update the last published marker to avoid confusion
+               localStorage.setItem('tara_last_published', cloudTime.toString());
            }
         } else {
             // Cloud fetch failed entirely
             console.log("[SiteContext] All cloud fetches failed. Using local/defaults.");
+            // If we have a local config, stick with it. 
+            // If not, we are stuck with empty defaults (Edge case: First visit + Offline/Blocked).
             if (localConfig) setHasUnsavedChanges(true);
         }
     }
@@ -257,7 +284,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       cacheControl: 'no-cache, no-store, max-age=0'
     });
 
-    // 3. Legacy Fallback (No cache)
+    // 3. Legacy Fallback (No cache) - Vital for fallback strategy
     const legacyRef = ref(storage, 'config/site_config.json');
     await uploadString(legacyRef, JSON.stringify(saveData), 'raw', {
       contentType: 'application/json',
@@ -279,13 +306,15 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
        updatedAt: timestamp
      };
      
+     // Set marker BEFORE upload so we trust this version even if upload is slow
      localStorage.setItem('tara_last_published', timestamp.toString());
      localStorage.setItem('tara_site_config', JSON.stringify(contentToPublish));
-
-     await saveToCloud(contentToPublish);
      
+     // Optimistically update state
      setContent(contentToPublish);
      setHasUnsavedChanges(false);
+
+     await saveToCloud(contentToPublish);
   };
 
   const updateStateAndDraft = (updater: (prev: SiteContent) => SiteContent) => {
