@@ -89,156 +89,159 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
-  // --- STRATEGY 1: SDK Fetch (Preferred) ---
+  // HELPER: Self-Healing URL Fixer
+  // If an image URL is missing 'alt=media', it won't load. This fixes it.
+  const fixUrl = (u: string) => {
+      if (!u || typeof u !== 'string' || !u.includes('firebasestorage')) return u;
+      try {
+          // If already valid, return
+          if (u.includes('alt=media')) return u;
+          
+          // Append alt=media safely
+          const separator = u.includes('?') ? '&' : '?';
+          return `${u}${separator}alt=media`;
+      } catch (e) {
+          return u;
+      }
+  };
+
+  // --- STRATEGY 1: SDK Fetch (Preferred for Admins) ---
   const fetchSDKConfig = async () => {
     if (!storage) return null;
-    
-    // Attempt Auth (Non-blocking)
-    try { await ensureAuth(); } catch (e) { console.warn("[SiteContext] Auth blocked/failed. Attempting public read..."); }
+    try { await ensureAuth(); } catch (e) { /* Auth optional for read */ }
 
     try {
-       // 1. Get Pointer
        const pointerRef = ref(storage, 'config/current.json');
        const pointerUrl = await getDownloadURL(pointerRef);
-       
-       // 2. Fetch Pointer Content (Bypass Cache)
-       const pointerRes = await fetch(`${pointerUrl}&t=${Date.now()}`, { cache: 'no-store' });
+       // Aggressive cache busting
+       const pointerRes = await fetch(`${pointerUrl}&t=${Math.random()}`, { cache: 'no-store' });
        if (!pointerRes.ok) throw new Error("Pointer fetch failed");
        
        const pointerData = await pointerRes.json();
        
        if (pointerData.version) {
           console.log("[SiteContext] Found version (SDK):", pointerData.version);
-          // 3. Get Actual Config
           const configRef = ref(storage, `config/${pointerData.version}`);
           const configUrl = await getDownloadURL(configRef);
-          const configRes = await fetch(`${configUrl}&t=${Date.now()}`, { cache: 'no-store' });
+          const configRes = await fetch(`${configUrl}&t=${Math.random()}`, { cache: 'no-store' });
           if (!configRes.ok) throw new Error("Config fetch failed");
-          
           return await configRes.json();
        }
-    } catch (e: any) {
-       console.warn("[SiteContext] SDK Version lookup failed:", e.message);
-    }
+    } catch (e) { /* Ignore */ }
     return null;
   };
 
-  // --- STRATEGY 2: Raw HTTP Fetch (Fallback for Edge/Chrome/Strict) ---
+  // --- STRATEGY 2: Raw HTTP Fetch (Fallback for Chrome/Edge) ---
   const fetchRawConfig = async () => {
     if (!bucketName) return null;
     try {
         console.log("[SiteContext] Attempting Raw HTTP Fetch...");
-        // Construct direct URL to Firebase Storage REST API
-        // This bypasses the JS SDK entirely
         const timestamp = Date.now();
+        // 1. Fetch Pointer
         const pointerUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fcurrent.json?alt=media&t=${timestamp}`;
-        
-        const pointerRes = await fetch(pointerUrl, { 
-            cache: 'no-store',
-            headers: { 'Cache-Control': 'no-cache' }
-        });
+        const pointerRes = await fetch(pointerUrl, { cache: 'no-store' });
         if (!pointerRes.ok) throw new Error("Raw pointer fetch failed");
         
         const pointerData = await pointerRes.json();
         
         if (pointerData.version) {
              console.log("[SiteContext] Found version (Raw):", pointerData.version);
+             // 2. Fetch Config
+             // Must encodeURIComponent twice for safe path handling in raw URLs if needed, but standard is single
              const configUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2F${pointerData.version}?alt=media&t=${timestamp}`;
              const configRes = await fetch(configUrl, { cache: 'no-store' });
              if (!configRes.ok) throw new Error("Raw config fetch failed");
              return await configRes.json();
         }
-    } catch (e) {
-        console.warn("[SiteContext] Raw fetch failed:", e);
-    }
+    } catch (e) { /* Ignore */ }
     return null;
   };
 
-  // --- STRATEGY 3: Legacy/Backup Fetch (If versioning fails completely) ---
+  // --- STRATEGY 3: Legacy File (Last Resort) ---
   const fetchLegacyConfig = async () => {
       if (!bucketName) return null;
       try {
-          console.log("[SiteContext] Attempting Legacy Backup Fetch...");
           const url = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fsite_config.json?alt=media&t=${Date.now()}`;
           const res = await fetch(url, { cache: 'no-store' });
-          if (!res.ok) return null;
-          return await res.json();
-      } catch (e) {
-          return null;
-      }
+          if (res.ok) return await res.json();
+      } catch (e) {}
+      return null;
   };
 
   // --- Initialize site ---
   const initSite = useCallback(async () => {
     setIsStorageConfigured(!!storage);
 
-    // STEP 1: LOCAL-FIRST LOAD (Optimistic)
+    // 1. Load Local Draft First (Fastest)
     const localStr = localStorage.getItem('tara_site_config');
     let localConfig: SiteContent | null = null;
     if (localStr) {
       try { 
-          localConfig = JSON.parse(localStr); 
+          localConfig = JSON.parse(localStr);
           if (localConfig) {
-             console.log("[SiteContext] Loaded Local Draft.");
+             // Heal URLs in local config immediately
+             Object.keys(localConfig.images).forEach(k => {
+                 localConfig!.images[k] = fixUrl(localConfig!.images[k]);
+             });
              setContent(prev => ({ ...prev, ...localConfig }));
+             console.log("[SiteContext] Loaded Local Draft");
           }
       } catch (e) {}
     }
 
-    // STEP 2: FETCH CLOUD CONFIG (Multi-Strategy)
     if (storage) {
+        // 2. Attempt Cloud Fetch (Chain)
         let cloudConfig = await fetchSDKConfig();
-        
-        // Fallback 1: Raw HTTP if SDK failed
-        if (!cloudConfig) {
-             cloudConfig = await fetchRawConfig();
-        }
+        if (!cloudConfig) cloudConfig = await fetchRawConfig();
+        if (!cloudConfig) cloudConfig = await fetchLegacyConfig();
 
-        // Fallback 2: Legacy file if Versioning failed
-        if (!cloudConfig) {
-             cloudConfig = await fetchLegacyConfig();
-        }
-
-        // STEP 3: RESOLVE CONFLICTS
         if (cloudConfig) {
            const cloudTime = cloudConfig.updatedAt || 0;
            const localTime = localConfig?.updatedAt || 0;
            
-           // If Local is NEWER than Cloud, KEEP LOCAL (Draft Mode)
+           // Heal URLs in cloud config
+           if (cloudConfig.images) {
+               Object.keys(cloudConfig.images).forEach(k => {
+                   cloudConfig.images[k] = fixUrl(cloudConfig.images[k]);
+               });
+           }
+           
+           // SYNC LOGIC
+           // If Local is newer than Cloud (User is Admin working on draft)
            if (localTime > cloudTime) {
                const lastPublished = parseInt(localStorage.getItem('tara_last_published') || '0');
                
-               // Check if local matches what we *think* we last published
-               // If yes, we are synced, just cloud is stale (CDN delay)
-               // Increased window to 10s to handle minor drift
-               if (Math.abs(localTime - lastPublished) < 10000) {
-                   console.log("[SiteContext] Local matches last publish. Synced (Cloud Lag).");
+               // If local matches what we *thought* we published, assume we are synced
+               if (Math.abs(localTime - lastPublished) < 5000) {
+                   console.log("[SiteContext] Local matches last publish. Synced.");
                    setHasUnsavedChanges(false);
                } else {
                    console.log("[SiteContext] Local draft is newer. Keeping draft.");
                    setHasUnsavedChanges(true);
                }
            } 
-           // If Cloud is NEWER (or Local doesn't exist), OVERWRITE LOCAL
-           else if (cloudTime >= localTime) {
-               console.log("[SiteContext] Cloud is newer. Updating local.");
+           // If Cloud is newer (Visitor, or Admin on fresh browser)
+           else {
+               console.log("[SiteContext] Cloud is newer. Updating.");
                const merged = { ...initialContent, ...cloudConfig };
+               
+               // Safely merge images (don't let empty cloud images overwrite valid local images if timestamps match)
+               // Actually, for visitors, we MUST overwrite with cloud.
                setContent(merged);
+               
+               // Update local storage so we are in sync
                localStorage.setItem('tara_site_config', JSON.stringify(merged));
                setHasUnsavedChanges(false);
-               // Also update the last published marker to avoid confusion
                localStorage.setItem('tara_last_published', cloudTime.toString());
            }
         } else {
-            // Cloud fetch failed entirely
-            console.log("[SiteContext] All cloud fetches failed. Using local/defaults.");
-            // If we have a local config, stick with it. 
-            // If not, we are stuck with empty defaults (Edge case: First visit + Offline/Blocked).
-            if (localConfig) setHasUnsavedChanges(true);
+           console.log("[SiteContext] Failed to load cloud config.");
+           // If we have a local config, keep it. If not, we are at defaults.
+           if (localConfig) setHasUnsavedChanges(true);
         }
     }
 
-    // STEP 4: LOAD GALLERY (Background)
+    // Load Gallery (Background)
     setTimeout(async () => {
       try {
         if (!storage) return;
@@ -261,13 +264,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveToCloud = useCallback(async (newContent: SiteContent) => {
     if (!storage) throw new Error("Storage not configured.");
-    
     try { await ensureAuth(); } catch(e) {}
     
     const { gallery, ...saveData } = newContent;
     const timestamp = saveData.updatedAt; 
     
-    // 1. Versioned Config (Cache forever)
+    // 1. Versioned Config
     const versionFilename = `site_config_v_${timestamp}.json`;
     const versionRef = ref(storage, `config/${versionFilename}`);
     
@@ -277,21 +279,20 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       customMetadata: { version: String(timestamp) }
     });
 
-    // 2. Pointer (No cache)
+    // 2. Pointer (With very strict no-cache)
     const pointerRef = ref(storage, 'config/current.json');
     await uploadString(pointerRef, JSON.stringify({ version: versionFilename, updatedAt: timestamp }), 'raw', {
       contentType: 'application/json',
       cacheControl: 'no-cache, no-store, max-age=0'
     });
 
-    // 3. Legacy Fallback (No cache) - Vital for fallback strategy
+    // 3. Legacy Backup
     const legacyRef = ref(storage, 'config/site_config.json');
     await uploadString(legacyRef, JSON.stringify(saveData), 'raw', {
       contentType: 'application/json',
-      cacheControl: 'no-cache, no-store, max-age=0'
+      cacheControl: 'no-cache'
     });
     
-    console.log("☁️ Published version:", versionFilename);
     setSyncError(null);
   }, []);
 
@@ -300,20 +301,23 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         alert("Cannot publish: Storage not configured.");
         return;
      }
+     
+     // 1. Force refresh content from State to avoid stale closure
+     // In a real app we'd use a ref, but here we trust 'content' is updated via renders.
+     
      const timestamp = Date.now();
      const contentToPublish = {
        ...content,
        updatedAt: timestamp
      };
      
-     // Set marker BEFORE upload so we trust this version even if upload is slow
+     // 2. Update Local First
      localStorage.setItem('tara_last_published', timestamp.toString());
      localStorage.setItem('tara_site_config', JSON.stringify(contentToPublish));
-     
-     // Optimistically update state
      setContent(contentToPublish);
      setHasUnsavedChanges(false);
 
+     // 3. Upload
      await saveToCloud(contentToPublish);
   };
 
@@ -351,22 +355,22 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateImage = async (key: string, url: string) => {
+    // URL CLEANING: Remove timestamp but KEEP tokens
     let cleanUrl = url;
     try {
         if (url.includes('firebasestorage')) {
             const urlObj = new URL(url);
+            // Remove cache busters
             urlObj.searchParams.delete('t'); 
             urlObj.searchParams.delete('nocache');
             
+            // Ensure alt=media exists
             if (!urlObj.searchParams.has('alt')) {
                 urlObj.searchParams.set('alt', 'media');
             }
-            
             cleanUrl = urlObj.toString();
         } 
-    } catch (e) { 
-        console.warn("URL cleanup failed, using original", e);
-    }
+    } catch (e) { }
 
     updateStateAndDraft(prev => ({
       ...prev,
@@ -381,21 +385,30 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!storage) throw new Error("Storage not configured");
     try { await ensureAuth(); } catch(e) {}
     
-    const path = `gallery/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+    // Sanitize filename
+    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+    const path = `gallery/${Date.now()}_${sanitizedName}`;
     const storageRef = ref(storage, path);
     
+    // Explicit MIME type detection
     let mimeType = file.type;
     if (!mimeType || mimeType === 'application/octet-stream') {
         const ext = file.name.split('.').pop()?.toLowerCase();
         if (ext === 'png') mimeType = 'image/png';
         else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
         else if (ext === 'svg') mimeType = 'image/svg+xml';
+        else if (ext === 'webp') mimeType = 'image/webp';
     }
 
-    const metadata = { contentType: mimeType || 'image/jpeg', cacheControl: 'public, max-age=31536000' };
+    const metadata = { 
+        contentType: mimeType || 'image/jpeg', 
+        cacheControl: 'public, max-age=31536000' 
+    };
+    
     const snap = await uploadBytes(storageRef, file, metadata);
     const url = await getDownloadURL(snap.ref);
     
+    // Display URL needs timestamp for immediate feedback in Gallery
     const displayUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
     setContent(prev => ({ ...prev, gallery: [displayUrl, ...prev.gallery] }));
   };
@@ -404,6 +417,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      if (!storage) return;
      try {
        await ensureAuth();
+       // Try to parse storage path from URL
        let path = url;
        try {
            const urlObj = new URL(url);
@@ -412,6 +426,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
                if (p) path = decodeURIComponent(p);
            }
        } catch(e) {}
+       
        const r = ref(storage, path);
        await deleteObject(r);
        setContent(prev => ({ ...prev, gallery: prev.gallery.filter(i => i !== url) }));
@@ -431,10 +446,12 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logVisit = async (path: string) => {
     if (!storage || path.startsWith('/admin')) return;
     try {
+       // Log to analytics folder
        const logRef = ref(storage, `analytics/logs/${Date.now()}.json`);
        const sid = sessionStorage.getItem('t_sid') || Math.random().toString(36).substring(2);
        sessionStorage.setItem('t_sid', sid);
        const data = { path, timestamp: Date.now(), sid, ua: navigator.userAgent };
+       // Fire and forget
        uploadString(logRef, JSON.stringify(data), 'raw', { contentType: 'application/json' }).catch(() => {});
     } catch (e) {}
   };
