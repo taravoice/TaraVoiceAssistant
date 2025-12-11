@@ -106,57 +106,76 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // --- ROBUST FETCH STRATEGY ---
   const fetchLatestConfig = async () => {
+      let fetchedConfig = null;
+
       // Strategy A: LIST ALL FILES (The "Truth" Strategy)
-      // This bypasses the cached 'current.json' entirely by asking the bucket for the list of files.
-      // This works best on Admin browsers or permissive browsers (Firefox/Safari).
+      // Works best on Admin browsers or permissive browsers.
       if (storage) {
           try {
-             // We attempt to list without blocking on auth to be faster
+             console.log("[SiteContext] Strategy A: Listing config folder...");
              const configListRef = ref(storage, 'config/');
              const res = await listAll(configListRef);
              
-             // Filter for versioned files: site_config_v_TIMESTAMP.json
              const versionFiles = res.items.filter(item => item.name.startsWith('site_config_v_'));
              
              if (versionFiles.length > 0) {
-                 // Sort descending by timestamp in filename
                  versionFiles.sort((a, b) => {
                      const timeA = parseInt(a.name.split('_v_')[1] || '0');
                      const timeB = parseInt(b.name.split('_v_')[1] || '0');
                      return timeB - timeA;
                  });
-                 
-                 // Get newest
                  console.log("[SiteContext] Found latest version via List:", versionFiles[0].name);
                  const url = await getDownloadURL(versionFiles[0]);
                  const response = await fetch(url);
-                 if (response.ok) return await response.json();
+                 if (response.ok) fetchedConfig = await response.json();
              }
           } catch (e) {
-             console.warn("[SiteContext] ListAll Fetch failed (Privacy Block or Permissions)", e);
+             console.warn("[SiteContext] Strategy A failed (Privacy/CORS)", e);
           }
       }
 
-      // Strategy B: LEGACY HTTP FETCH (The "Brute Force" Strategy)
-      // This helps Strict Browsers (Edge/Chrome) that block the SDK/IndexedDB.
-      // We manually construct the URL to the 'site_config.json' fallback file.
-      // We append a random timestamp to FORCE bypass the CDN cache (solving the Yandex issue).
+      if (fetchedConfig) return fetchedConfig;
+
+      // Strategy B: HTTP POINTER FETCH (The "Smart Bypass" Strategy)
+      // If listAll fails, try to read current.json via raw HTTP.
+      // We append a timestamp to the URL to bust the CDN cache on Yandex/Opera.
       if (bucketName) {
           try {
-              console.log("[SiteContext] Trying Direct HTTP fetch...");
+              console.log("[SiteContext] Strategy B: Fetching current.json via HTTP...");
               const timestamp = Date.now();
               const random = Math.random().toString(36).substring(7);
-              // NOTE: This URL pattern is standard for public Firebase buckets
+              // Construct raw URL for current.json
+              const pointerUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fcurrent.json?alt=media&t=${timestamp}_${random}`;
+              
+              const pointerRes = await fetch(pointerUrl, { cache: 'no-store' });
+              if (pointerRes.ok) {
+                  const pointerData = await pointerRes.json();
+                  if (pointerData && pointerData.version) {
+                      console.log("[SiteContext] Pointer found version:", pointerData.version);
+                      // Now fetch that specific version via HTTP
+                      const versionUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2F${pointerData.version}?alt=media`;
+                      const versionRes = await fetch(versionUrl);
+                      if (versionRes.ok) return await versionRes.json();
+                  }
+              }
+          } catch (e) {
+              console.warn("[SiteContext] Strategy B failed", e);
+          }
+      }
+
+      // Strategy C: LEGACY HTTP FETCH (The "Last Resort")
+      // If versioning fails entirely, try the backup file.
+      if (bucketName) {
+          try {
+              console.log("[SiteContext] Strategy C: Fetching legacy backup via HTTP...");
+              const timestamp = Date.now();
+              const random = Math.random().toString(36).substring(7);
               const legacyUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fsite_config.json?alt=media&t=${timestamp}_${random}`;
               
-              const res = await fetch(legacyUrl, { 
-                  cache: 'no-store',
-                  headers: { 'Cache-Control': 'no-cache' } 
-              });
-              
+              const res = await fetch(legacyUrl, { cache: 'no-store' });
               if (res.ok) return await res.json();
           } catch (e) {
-              console.warn("[SiteContext] HTTP Legacy fetch failed", e);
+              console.warn("[SiteContext] Strategy C failed", e);
           }
       }
 
@@ -174,7 +193,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try { 
           localConfig = JSON.parse(localStr);
           if (localConfig && localConfig.images) {
-             // Ensure images are valid immediately
              Object.keys(localConfig.images).forEach(k => {
                  localConfig!.images[k] = fixUrl(localConfig!.images[k]);
              });
@@ -190,7 +208,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
        const cloudTime = cloudConfig.updatedAt || 0;
        const localTime = localConfig?.updatedAt || 0;
        
-       // Fix URLs from cloud
        if (cloudConfig.images) {
            Object.keys(cloudConfig.images).forEach(k => {
                cloudConfig.images[k] = fixUrl(cloudConfig.images[k]);
@@ -198,11 +215,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
        }
        
        // SYNC LOGIC
-       // If Local Draft is NEWER than cloud, keep local.
        if (localTime > cloudTime) {
            const lastPublished = parseInt(localStorage.getItem('tara_last_published') || '0');
-           
-           // Exception: If local matches the last known published time, we are synced.
            if (Math.abs(localTime - lastPublished) < 2000) {
                console.log("[SiteContext] Synced (Local matches last published).");
                setHasUnsavedChanges(false);
@@ -212,11 +226,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
            }
        } 
        else {
-           // Cloud is newer -> Update everything
-           console.log("[SiteContext] Cloud is newer/equal. Overwriting local.");
+           console.log("[SiteContext] Cloud is newer/equal. Syncing.");
            
-           // Safe Merge: Don't overwrite existing local images with empty strings from cloud
-           // (This handles the 'Split Brain' issue if cloud was saved with empty data)
+           // Safe Merge
            const mergedImages = { ...initialImages };
            if (localConfig?.images) Object.assign(mergedImages, localConfig.images);
            if (cloudConfig.images) {
@@ -240,10 +252,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
        }
     } else {
        console.log("[SiteContext] Failed to load cloud config. Staying with local or default.");
-       if (localConfig) {
-           // If we have a local config but cloud failed, treat as unsaved just in case
-           setHasUnsavedChanges(true);
-       }
+       if (localConfig) setHasUnsavedChanges(true);
     }
 
     // Load Gallery (Background)
@@ -253,7 +262,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try { await ensureAuth(); } catch(e) {}
         const listRef = ref(storage, 'gallery/');
         const res = await listAll(listRef);
-        // Load recent images
         const recentItems = res.items.slice(-50).reverse();
         
         const urls = await Promise.all(recentItems.map(async r => {
@@ -278,41 +286,43 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { gallery, ...saveData } = newContent;
     const timestamp = saveData.updatedAt; 
     
-    // Use Blobs for reliable metadata assignment
     const jsonString = JSON.stringify(saveData);
     const contentBlob = new Blob([jsonString], { type: 'application/json' });
     
-    // Metadata options ensuring cache-control is set
-    // 'no-store' is critical for the pointer file and legacy file
-    const strictMetadata = {
+    // Strict metadata for non-cached files
+    const noCacheMetadata = {
         contentType: 'application/json',
         cacheControl: 'no-cache, no-store, max-age=0'
     };
+
+    // Metadata for immutable version files
+    const immutableMetadata = {
+        contentType: 'application/json',
+        cacheControl: 'public, max-age=31536000',
+        customMetadata: { version: String(timestamp) }
+    };
     
     // 1. Versioned Config (Archival)
-    // We can allow caching on this because the filename contains the timestamp (it is unique)
     const versionFilename = `site_config_v_${timestamp}.json`;
     const versionRef = ref(storage, `config/${versionFilename}`);
     
-    await uploadBytes(versionRef, contentBlob, {
-        contentType: 'application/json',
-        cacheControl: 'public, max-age=31536000', // Cache forever
-        customMetadata: { version: String(timestamp) }
-    });
+    // Step 1: Upload
+    await uploadBytes(versionRef, contentBlob);
+    // Step 2: Force Metadata update separately (Guarantees it sticks)
+    await updateMetadata(versionRef, immutableMetadata);
 
     // 2. Pointer File (Force Metadata to fix Caching)
-    // This file MUST NOT be cached, or users see old versions.
     const pointerRef = ref(storage, 'config/current.json');
     const pointerData = JSON.stringify({ version: versionFilename, updatedAt: timestamp });
     const pointerBlob = new Blob([pointerData], { type: 'application/json' });
     
-    // Upload with strict metadata
-    await uploadBytes(pointerRef, pointerBlob, strictMetadata);
+    await uploadBytes(pointerRef, pointerBlob);
+    await updateMetadata(pointerRef, noCacheMetadata);
 
     // 3. Legacy Backup (Force Metadata)
-    // This is used by the Direct HTTP fallback. It MUST NOT be cached.
     const legacyRef = ref(storage, 'config/site_config.json');
-    await uploadBytes(legacyRef, contentBlob, strictMetadata);
+    await uploadBytes(legacyRef, contentBlob);
+    await updateMetadata(legacyRef, noCacheMetadata);
     
     setSyncError(null);
     console.log("☁️ SITE CONTEXT: Saved successfully with strict metadata.");
@@ -378,7 +388,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const urlObj = new URL(url);
             urlObj.searchParams.delete('t'); 
             urlObj.searchParams.delete('nocache');
-            // Ensure alt=media persists
             if (!urlObj.searchParams.has('alt')) {
                 urlObj.searchParams.set('alt', 'media');
             }
@@ -417,7 +426,10 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cacheControl: 'public, max-age=31536000' 
     };
     
-    const snap = await uploadBytes(storageRef, file, metadata);
+    // Separate update to force metadata
+    const snap = await uploadBytes(storageRef, file);
+    await updateMetadata(storageRef, metadata);
+    
     const url = await getDownloadURL(snap.ref);
     const displayUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
     setContent(prev => ({ ...prev, gallery: [displayUrl, ...prev.gallery] }));
