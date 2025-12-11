@@ -2,6 +2,7 @@
 import React from 'react';
 import { Target, Lightbulb, Users, Zap } from 'lucide-react';
 import { useSite } from '../context/SiteContext';
+import { MediaRenderer } from '../components/MediaRenderer';
 
 const About: React.FC = () => {
   const { content } = useSite();
@@ -53,8 +54,7 @@ const About: React.FC = () => {
         <div className="flex flex-col md:flex-row items-center gap-12">
            {content.images.aboutTeam && (
              <div className="md:w-1/2">
-                <img 
-                  key={getBustedUrl(content.images.aboutTeam)}
+                <MediaRenderer 
                   src={getBustedUrl(content.images.aboutTeam)} 
                   alt="Team working" 
                   className="rounded-2xl shadow-lg w-full h-auto object-cover"
@@ -87,8 +87,7 @@ const About: React.FC = () => {
         <div className="flex flex-col md:flex-row-reverse items-center gap-12">
            {content.images.aboutFuture && (
              <div className="md:w-1/2">
-                <img 
-                  key={getBustedUrl(content.images.aboutFuture)}
+                <MediaRenderer 
                   src={getBustedUrl(content.images.aboutFuture)} 
                   alt="AI Future" 
                   className="rounded-2xl shadow-lg w-full h-auto object-cover"
@@ -118,7 +117,11 @@ const About: React.FC = () => {
                  </div>
                  {section.image && (
                    <div className="order-1 md:order-2">
-                      <img src={getBustedUrl(section.image)} alt={section.title} className="rounded-2xl shadow-lg w-full h-auto object-cover" />
+                      <MediaRenderer 
+                        src={getBustedUrl(section.image)} 
+                        alt={section.title} 
+                        className="rounded-2xl shadow-lg w-full h-auto object-cover" 
+                      />
                    </div>
                  )}
               </div>
