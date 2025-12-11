@@ -85,8 +85,7 @@ const Features: React.FC = () => {
                 </div>
                 {currentImg && (
                   <div className="lg:w-1/2">
-                    <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-slate-200 group">
-                      <div className="absolute inset-0 bg-[#0097b2]/10 group-hover:bg-transparent transition-colors duration-500 pointer-events-none z-10"></div>
+                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 group">
                       <MediaRenderer 
                         src={currentImg} 
                         alt={feature.title} 
@@ -115,7 +114,7 @@ const Features: React.FC = () => {
                         <MediaRenderer 
                           src={sectionImg} 
                           alt={section.title} 
-                          className="rounded-2xl shadow-lg w-full h-auto object-cover" 
+                          className="rounded-2xl w-full h-auto object-cover" 
                         />
                       </div>
                     )}
