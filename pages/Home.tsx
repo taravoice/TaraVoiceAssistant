@@ -29,8 +29,8 @@ const Home: React.FC = () => {
              <MediaRenderer 
                src={getBustedUrl(content.images.homeHeroBg)} 
                alt="Hero Background"
-               className="w-full h-full object-cover opacity-5"
-               videoClassName="w-full h-full object-cover opacity-5"
+               className="w-full h-full object-cover opacity-10"
+               videoClassName="w-full h-full object-cover opacity-10"
              />
            )}
         </div>
