@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { useSite } from '../context/SiteContext';
 import { MediaRenderer } from '../components/MediaRenderer';
+import { SEO } from '../components/SEO';
 
 const Pricing: React.FC = () => {
   const { content } = useSite();
@@ -12,9 +13,14 @@ const Pricing: React.FC = () => {
 
   return (
     <div className="bg-[#d9d9d9] min-h-screen">
+      <SEO 
+        title="Pricing | Affordable AI Receptionist for Business"
+        description="Simple pricing for your AI appointment setter. $97/month for 24/7 automated phone answering, calendar integration, and call recording."
+      />
+
       <div className="py-20 text-center">
         <h1 className="text-4xl font-bold text-slate-900">Simple, Transparent Pricing</h1>
-        <p className="mt-4 text-xl text-slate-600">No hidden contracts. Scale as you grow.</p>
+        <p className="mt-4 text-xl text-slate-600">No hidden contracts. Scale your <strong>AI phone agent</strong> as you grow.</p>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
