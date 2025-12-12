@@ -66,8 +66,7 @@ const BlogPost: React.FC = () => {
                   
                   {/* Bottom CTA */}
                   <div className="mt-12 pt-8 border-t border-slate-100 bg-slate-50 -mx-8 -mb-8 md:-mx-12 md:-mb-12 p-8 rounded-b-3xl text-center">
-                     <h3 className="text-2xl font-bold text-slate-900 mb-3">Ready to automate your calls?</h3>
-                     <p className="text-slate-600 mb-6">Start your free trial of Tara Voice Assistant today.</p>
+                     <h3 className="text-2xl font-bold text-slate-900 mb-6">Ready to automate your calls?</h3>
                      <Link to="/contact">
                         <Button size="lg">Get Started</Button>
                      </Link>
