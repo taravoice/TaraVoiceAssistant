@@ -2,14 +2,15 @@
 import React, { useEffect } from 'react';
 import { useParams, Link, Navigate } from 'react-router-dom';
 import { SEO } from '../components/SEO';
-import { blogPosts } from '../data/blogPosts';
+import { useSite } from '../context/SiteContext'; // Use dynamic data
 import { ArrowLeft, Calendar, Tag, ChevronRight } from 'lucide-react';
 import { Button } from '../components/Button';
 
 const BlogPost: React.FC = () => {
   const { slug } = useParams();
+  const { blogPosts } = useSite(); // Get dynamic posts
   
-  // Find the post
+  // Find the post from context
   const post = blogPosts.find(p => p.slug === slug);
 
   // Scroll to top when slug changes
@@ -18,6 +19,8 @@ const BlogPost: React.FC = () => {
   }, [slug]);
 
   if (!post) {
+    // Optional: show loading state here if blogPosts is empty initially
+    if (blogPosts.length === 0) return <div className="p-20 text-center">Loading...</div>;
     return <Navigate to="/blog" replace />;
   }
 
