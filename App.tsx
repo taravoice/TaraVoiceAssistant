@@ -8,6 +8,7 @@ import About from './pages/About';
 import Features from './pages/Features';
 import Pricing from './pages/Pricing';
 import Blog from './pages/Blog';
+import BlogPost from './pages/BlogPost'; // New Import
 import Contact from './pages/Contact';
 
 // Admin Imports
@@ -68,6 +69,7 @@ function App() {
                 <Route path="features" element={<Features />} />
                 <Route path="pricing" element={<Pricing />} />
                 <Route path="blog" element={<Blog />} />
+                <Route path="blog/:slug" element={<BlogPost />} /> {/* Dynamic Blog Route */}
                 <Route path="contact" element={<Contact />} />
               </Routes>
             </Layout>
