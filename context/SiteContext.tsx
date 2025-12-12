@@ -21,7 +21,6 @@ interface SiteContent {
   customSections: CustomSection[];
   images: SiteImages;
   gallery: string[];
-  blogPosts: BlogPost[];
   updatedAt: number;
 }
 
@@ -34,8 +33,6 @@ interface SiteContextType {
   updateImage: (key: string, url: string) => Promise<void>;
   uploadToGallery: (file: File) => Promise<void>;
   removeFromGallery: (url: string) => Promise<void>;
-  saveBlogPost: (post: BlogPost) => Promise<void>;
-  deleteBlogPost: (id: string) => Promise<void>;
   logVisit: (path: string) => Promise<void>;
   isAuthenticated: boolean;
   isStorageConfigured: boolean;
@@ -75,7 +72,6 @@ const initialContent: SiteContent = {
   customSections: [],
   images: staticImageMap,
   gallery: [],
-  blogPosts: staticBlogPosts,
   updatedAt: 0
 };
 
@@ -217,32 +213,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   };
 
-  const saveBlogPost = async (post: BlogPost) => {
-    updateStateAndDraft(prev => {
-      const existingIndex = prev.blogPosts.findIndex(p => p.id === post.id);
-      let newPosts;
-      if (existingIndex >= 0) {
-        newPosts = [...prev.blogPosts];
-        newPosts[existingIndex] = post;
-      } else {
-        newPosts = [...prev.blogPosts, post];
-      }
-      return {
-        ...prev,
-        blogPosts: newPosts,
-        updatedAt: Date.now()
-      };
-    });
-  };
-
-  const deleteBlogPost = async (id: string) => {
-    updateStateAndDraft(prev => ({
-      ...prev,
-      blogPosts: prev.blogPosts.filter(p => p.id !== id),
-      updatedAt: Date.now()
-    }));
-  };
-
   const updateImage = async () => {};
   const uploadToGallery = async () => {};
   const removeFromGallery = async () => {};
@@ -262,10 +232,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <SiteContext.Provider value={{ 
       content, 
-      blogPosts: content.blogPosts, 
+      blogPosts: staticBlogPosts, 
       updateHomeContent, addCustomSection, removeCustomSection, 
       updateImage, uploadToGallery, removeFromGallery, logVisit, 
-      saveBlogPost, deleteBlogPost,
       isAuthenticated, isStorageConfigured, syncError, 
       login, logout, changePassword, isInitialized, hasUnsavedChanges, 
       publishSite, forceSync
