@@ -4,6 +4,7 @@ import { Mail, Phone, Send, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '../components/Button';
 import { useSite } from '../context/SiteContext';
 import emailjs from '@emailjs/browser';
+import { SEO } from '../components/SEO';
 
 const Contact: React.FC = () => {
   const formRef = useRef<HTMLFormElement>(null);
@@ -59,10 +60,15 @@ const Contact: React.FC = () => {
 
   return (
     <div className="bg-[#d9d9d9] min-h-screen py-20">
+      <SEO 
+        title="Contact Tara Voice Assistant | Get Your AI Phone Agent"
+        description="Contact us to set up your AI appointment setter. Automate your front desk with our AI virtual receptionist service."
+      />
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h1 className="text-4xl font-bold text-slate-900">Get in Touch</h1>
-          <p className="mt-4 text-xl text-slate-600">Ready to automate? Send us a message or book a demo.</p>
+          <p className="mt-4 text-xl text-slate-600">Ready to automate? Send us a message or book a demo for your <strong>AI phone agent</strong>.</p>
         </div>
 
         <div className="grid lg:grid-cols-2 gap-16">
