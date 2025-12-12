@@ -16,7 +16,6 @@ import AdminLogin from './pages/admin/AdminLogin';
 import AdminLayout from './pages/admin/AdminLayout';
 import Dashboard from './pages/admin/Dashboard';
 import ContentManager from './pages/admin/ContentManager';
-import BlogManager from './pages/admin/BlogManager'; // New Import
 import MediaManager from './pages/admin/MediaManager';
 import Gallery from './pages/admin/Gallery';
 import Settings from './pages/admin/Settings';
@@ -55,7 +54,6 @@ function App() {
           <Route path="/admin" element={<AdminLayout />}>
              <Route path="dashboard" element={<Dashboard />} />
              <Route path="content" element={<ContentManager />} />
-             <Route path="blog" element={<BlogManager />} /> {/* New Route */}
              <Route path="media" element={<MediaManager />} />
              <Route path="gallery" element={<Gallery />} />
              <Route path="settings" element={<Settings />} />
