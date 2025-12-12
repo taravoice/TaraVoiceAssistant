@@ -6,26 +6,24 @@ import { MediaRenderer } from '../../components/MediaRenderer';
 
 const MediaManager: React.FC = () => {
   // Use a hardcoded list of mappings matching SiteContext defaults.
-  // Note: To use an .mp4, you must upload a file named exactly like the mapping (e.g. 'home_hero.png')
-  // OR the code in SiteContext must be updated to point to .mp4.
-  // For now, this instructions guide users to replace files.
+  // Added 'size' field to guide the user on optimal dimensions.
   const mappings = [
-    { section: "Website Logo", filename: "logo.png", path: "/logo.png" },
-    { section: "Hero Background", filename: "home_hero.png (or .mp4)", path: "/images/home_hero.png" },
-    { section: "Industry 1", filename: "industry_1.png", path: "/images/industry_1.png" },
-    { section: "Industry 2", filename: "industry_2.png", path: "/images/industry_2.png" },
-    { section: "Feature: Booking", filename: "feature_1.png", path: "/images/feature_1.png" },
-    { section: "Feature: Routing", filename: "feature_2.png", path: "/images/feature_2.png" },
-    { section: "Feature: Support", filename: "feature_3.png", path: "/images/feature_3.png" },
-    { section: "Feature: Sync", filename: "feature_4.png", path: "/images/feature_4.png" },
-    { section: "Feature: Analytics", filename: "feature_5.png", path: "/images/feature_5.png" },
-    { section: "Feature: Voice", filename: "feature_6.png", path: "/images/feature_6.png" },
-    { section: "About: Team", filename: "about_team.png", path: "/images/about_team.png" },
-    { section: "About: Future", filename: "about_future.png", path: "/images/about_future.png" },
+    { section: "Website Logo", filename: "logo.png", path: "/logo.png", size: "500x150 (Transparent)" },
+    { section: "Hero Background", filename: "home_hero.png (or .mp4)", path: "/images/home_hero.png", size: "1920x1080 (16:9)" },
+    { section: "Industry 1", filename: "industry_1.png", path: "/images/industry_1.png", size: "800x600 (4:3)" },
+    { section: "Industry 2", filename: "industry_2.png", path: "/images/industry_2.png", size: "800x600 (4:3)" },
+    { section: "Feature: Booking", filename: "feature_1.png", path: "/images/feature_1.png", size: "1200x800 (3:2)" },
+    { section: "Feature: Routing", filename: "feature_2.png", path: "/images/feature_2.png", size: "1200x800 (3:2)" },
+    { section: "Feature: Support", filename: "feature_3.png", path: "/images/feature_3.png", size: "1200x800 (3:2)" },
+    { section: "Feature: Sync", filename: "feature_4.png", path: "/images/feature_4.png", size: "1200x800 (3:2)" },
+    { section: "Feature: Analytics", filename: "feature_5.png", path: "/images/feature_5.png", size: "1200x800 (3:2)" },
+    { section: "Feature: Voice", filename: "feature_6.png", path: "/images/feature_6.png", size: "1200x800 (3:2)" },
+    { section: "About: Team", filename: "about_team.png", path: "/images/about_team.png", size: "1200x800 (3:2)" },
+    { section: "About: Future", filename: "about_future.png", path: "/images/about_future.png", size: "1200x800 (3:2)" },
   ];
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 pb-12">
+    <div className="max-w-6xl mx-auto space-y-8 pb-12">
       <div className="flex flex-col gap-4">
         <div>
            <h1 className="text-3xl font-bold text-slate-900 flex items-center">
@@ -54,36 +52,38 @@ const MediaManager: React.FC = () => {
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="grid grid-cols-12 gap-4 p-4 bg-slate-50 border-b border-slate-200 text-sm font-semibold text-slate-700">
-           <div className="col-span-4">Section</div>
-           <div className="col-span-4">Required Filename</div>
-           <div className="col-span-4">Current Status</div>
+           <div className="col-span-3">Section</div>
+           <div className="col-span-3">Required Filename</div>
+           <div className="col-span-3">Rec. Size (px)</div>
+           <div className="col-span-3">Current Status</div>
         </div>
         
         <div className="divide-y divide-slate-100">
            {mappings.map((item, idx) => (
              <div key={idx} className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-slate-50 transition-colors">
-               <div className="col-span-4 font-medium text-slate-900">
+               <div className="col-span-3 font-medium text-slate-900">
                  {item.section}
                </div>
-               <div className="col-span-4 font-mono text-sm text-slate-600 bg-slate-100 px-2 py-1 rounded w-fit">
-                 {item.filename}
+               <div className="col-span-3">
+                 <code className="text-xs font-mono text-slate-600 bg-slate-100 px-2 py-1 rounded">
+                   {item.filename}
+                 </code>
                </div>
-               <div className="col-span-4">
+               <div className="col-span-3 text-sm text-slate-500">
+                  {item.size}
+               </div>
+               <div className="col-span-3">
                   {/* We try to display the image/video. If it fails, we show 'Missing' */}
                   <div className="flex items-center space-x-4">
-                    <div className="h-12 w-20 bg-slate-200 rounded border border-slate-300 overflow-hidden relative flex items-center justify-center">
+                    <div className="h-16 w-24 bg-slate-200 rounded border border-slate-300 overflow-hidden relative flex items-center justify-center">
                         <MediaRenderer 
                            src={item.path} 
                            alt={item.filename}
                            className="w-full h-full object-cover"
                            videoClassName="w-full h-full object-cover"
                         />
-                         {/* This simple onError handler approach is tricky with a Component. 
-                             Ideally, MediaRenderer handles errors, but for this simple preview, 
-                             if the image is broken, it just shows broken icon. 
-                         */}
                     </div>
-                    <span className="text-xs text-slate-400">{item.path}</span>
+                    <span className="text-xs text-slate-400 break-all">{item.path}</span>
                   </div>
                </div>
              </div>
