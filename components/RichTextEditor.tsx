@@ -12,6 +12,10 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({ initialValue, on
 
   // Initialize content
   useEffect(() => {
+    // CRITICAL FIX: Force the browser to use <p> tags for new lines instead of <div>
+    // This ensures correct spacing on the public blog.
+    document.execCommand('defaultParagraphSeparator', false, 'p');
+
     if (contentRef.current && contentRef.current.innerHTML !== initialValue) {
       contentRef.current.innerHTML = initialValue;
     }
@@ -63,8 +67,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({ initialValue, on
         ref={contentRef}
         contentEditable
         onInput={handleInput}
-        className="min-h-[400px] p-6 outline-none prose prose-slate max-w-none overflow-y-auto"
-        style={{ whiteSpace: 'pre-wrap' }}
+        // Updated classes to match BlogPost.tsx exactly (prose-lg)
+        className="min-h-[400px] p-6 outline-none prose prose-lg prose-slate max-w-none overflow-y-auto"
+        // Removed whiteSpace: 'pre-wrap' so HTML renders naturally
       ></div>
     </div>
   );
