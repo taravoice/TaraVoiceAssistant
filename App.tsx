@@ -1,3 +1,4 @@
+
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { Analytics } from '@vercel/analytics/react';
@@ -6,6 +7,7 @@ import Home from './pages/Home';
 import About from './pages/About';
 import Features from './pages/Features';
 import Pricing from './pages/Pricing';
+import Blog from './pages/Blog';
 import Contact from './pages/Contact';
 
 // Admin Imports
@@ -65,6 +67,7 @@ function App() {
                 <Route path="about" element={<About />} />
                 <Route path="features" element={<Features />} />
                 <Route path="pricing" element={<Pricing />} />
+                <Route path="blog" element={<Blog />} />
                 <Route path="contact" element={<Contact />} />
               </Routes>
             </Layout>
