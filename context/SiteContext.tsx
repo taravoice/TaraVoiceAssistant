@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { storage, ensureAuth, bucketName } from '../firebase';
-import { ref, getDownloadURL, uploadBytes, listAll } from 'firebase/storage';
+import { storage, ensureAuth } from '../firebase';
+import { ref, getDownloadURL, uploadBytes } from 'firebase/storage';
 import { blogPosts as staticBlogPosts } from '../data/blogPosts';
 import { CustomSection, BlogPost } from '../types';
 
@@ -219,14 +219,13 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveBlogPost = async (post: BlogPost) => {
     updateStateAndDraft(prev => {
-      const currentPosts = prev.blogPosts || staticBlogPosts;
-      const existingIndex = currentPosts.findIndex(p => p.id === post.id);
+      const existingIndex = prev.blogPosts.findIndex(p => p.id === post.id);
       let newPosts;
       if (existingIndex >= 0) {
-        newPosts = [...currentPosts];
+        newPosts = [...prev.blogPosts];
         newPosts[existingIndex] = post;
       } else {
-        newPosts = [post, ...currentPosts];
+        newPosts = [...prev.blogPosts, post];
       }
       return {
         ...prev,
@@ -237,14 +236,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const deleteBlogPost = async (id: string) => {
-    updateStateAndDraft(prev => {
-      const currentPosts = prev.blogPosts || staticBlogPosts;
-      return {
-        ...prev,
-        blogPosts: currentPosts.filter(p => p.id !== id),
-        updatedAt: Date.now()
-      };
-    });
+    updateStateAndDraft(prev => ({
+      ...prev,
+      blogPosts: prev.blogPosts.filter(p => p.id !== id),
+      updatedAt: Date.now()
+    }));
   };
 
   const updateImage = async () => {};
@@ -265,13 +261,14 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <SiteContext.Provider value={{ 
-      content, blogPosts: content.blogPosts || staticBlogPosts, 
+      content, 
+      blogPosts: content.blogPosts, 
       updateHomeContent, addCustomSection, removeCustomSection, 
       updateImage, uploadToGallery, removeFromGallery, logVisit, 
+      saveBlogPost, deleteBlogPost,
       isAuthenticated, isStorageConfigured, syncError, 
       login, logout, changePassword, isInitialized, hasUnsavedChanges, 
-      publishSite, forceSync,
-      saveBlogPost, deleteBlogPost
+      publishSite, forceSync
     }}>
       {children}
     </SiteContext.Provider>
