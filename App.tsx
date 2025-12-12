@@ -8,7 +8,7 @@ import About from './pages/About';
 import Features from './pages/Features';
 import Pricing from './pages/Pricing';
 import Blog from './pages/Blog';
-import BlogPost from './pages/BlogPost'; // New Import
+import BlogPost from './pages/BlogPost';
 import Contact from './pages/Contact';
 
 // Admin Imports
@@ -16,6 +16,7 @@ import AdminLogin from './pages/admin/AdminLogin';
 import AdminLayout from './pages/admin/AdminLayout';
 import Dashboard from './pages/admin/Dashboard';
 import ContentManager from './pages/admin/ContentManager';
+import BlogManager from './pages/admin/BlogManager'; // New Import
 import MediaManager from './pages/admin/MediaManager';
 import Gallery from './pages/admin/Gallery';
 import Settings from './pages/admin/Settings';
@@ -31,7 +32,6 @@ function ScrollToTop() {
   return null;
 }
 
-// Analytics Tracker Component
 function PageTracker() {
   const { pathname } = useLocation();
   const { logVisit } = useSite();
@@ -55,6 +55,7 @@ function App() {
           <Route path="/admin" element={<AdminLayout />}>
              <Route path="dashboard" element={<Dashboard />} />
              <Route path="content" element={<ContentManager />} />
+             <Route path="blog" element={<BlogManager />} /> {/* New Route */}
              <Route path="media" element={<MediaManager />} />
              <Route path="gallery" element={<Gallery />} />
              <Route path="settings" element={<Settings />} />
@@ -69,7 +70,7 @@ function App() {
                 <Route path="features" element={<Features />} />
                 <Route path="pricing" element={<Pricing />} />
                 <Route path="blog" element={<Blog />} />
-                <Route path="blog/:slug" element={<BlogPost />} /> {/* Dynamic Blog Route */}
+                <Route path="blog/:slug" element={<BlogPost />} />
                 <Route path="contact" element={<Contact />} />
               </Routes>
             </Layout>
