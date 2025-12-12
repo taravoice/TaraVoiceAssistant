@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { Mail, Phone, Send, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '../components/Button';
@@ -39,7 +40,16 @@ const Contact: React.FC = () => {
     } catch (error: any) {
       console.error('EmailJS Error:', error);
       setStatus('error');
-      setErrorMessage(error?.text || "Something went wrong. Please try again or email us directly at info@taravoiceassistant.com");
+      
+      let msg = error?.text || "Something went wrong. Please try again or email us directly at info@taravoiceassistant.com";
+
+      // Handle specific "Invalid grant" error (Gmail Token Expired) gracefully
+      if (error?.text && error.text.includes("Invalid grant")) {
+         console.warn("⚠️ ADMIN ACTION REQUIRED: Your EmailJS connection to Gmail has expired. Go to EmailJS Dashboard and Reconnect.");
+         msg = "Our messaging system is currently undergoing maintenance. Please email us directly at info@taravoiceassistant.com.";
+      }
+
+      setErrorMessage(msg);
     } finally {
       setLoading(false);
     }
@@ -90,9 +100,9 @@ const Contact: React.FC = () => {
                 <div className="bg-red-50 text-red-700 p-4 rounded-xl mb-4 border border-red-200 flex items-start">
                   <AlertCircle className="w-5 h-5 mr-3 mt-0.5" />
                   <div>
-                    <p className="text-sm font-bold">Something went wrong.</p>
+                    <p className="text-sm font-bold">Unable to send message.</p>
                     <p className="text-sm">{errorMessage}</p>
-                    <p className="text-xs mt-1 italic">Please try again or email us directly at info@taravoiceassistant.com</p>
+                    <p className="text-xs mt-1 italic font-semibold">Please email us directly at info@taravoiceassistant.com</p>
                   </div>
                 </div>
               )}
