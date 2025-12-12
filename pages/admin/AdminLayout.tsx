@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Link, useLocation, Navigate, Outlet } from 'react-router-dom';
-import { LayoutDashboard, FileText, Image as ImageIcon, Settings as SettingsIcon, LogOut, ExternalLink, Grid, AlertTriangle, CloudOff, Save, Loader2, CheckCircle2 } from 'lucide-react';
+import { LayoutDashboard, FileText, Image as ImageIcon, Settings as SettingsIcon, LogOut, ExternalLink, Grid, AlertTriangle, CloudOff, Save, Loader2, CheckCircle2, PenTool } from 'lucide-react';
 import { useSite } from '../../context/SiteContext';
 
 const AdminLayout: React.FC = () => {
@@ -30,13 +30,12 @@ const AdminLayout: React.FC = () => {
   const navItems = [
     { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
     { label: 'Content Editor', path: '/admin/content', icon: FileText },
+    { label: 'Blog Manager', path: '/admin/blog', icon: PenTool }, // New Item
     { label: 'Media Manager', path: '/admin/media', icon: ImageIcon },
     { label: 'Gallery', path: '/admin/gallery', icon: Grid },
     { label: 'Settings', path: '/admin/settings', icon: SettingsIcon },
   ];
 
-  // Force Admin Logo to use local file (Decoupled from CMS)
-  // This ensures the Admin sidebar always uses the specific file in 'public/logo.png'
   const adminLogoSrc = '/logo.png';
 
   return (
@@ -49,11 +48,9 @@ const AdminLayout: React.FC = () => {
               className="h-8 w-auto object-contain" 
               alt="Admin Logo" 
               onError={(e) => {
-                 // Fallback text if logo fails
                  console.warn("Admin logo failed to load at /logo.png");
               }}
             />
-            {/* Show text label alongside logo */}
             <span className="font-bold text-lg">Admin</span>
         </div>
         
