@@ -17,7 +17,8 @@ const BlogManager: React.FC = () => {
       slug: '',
       category: 'General',
       excerpt: '',
-      content: '<p>Start writing your article here...</p>',
+      // Initialize with an empty paragraph so the editor starts in "Paragraph Mode"
+      content: '<p><br/></p>',
       date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     });
     setIsEditing(true);
