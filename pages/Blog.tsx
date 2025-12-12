@@ -2,10 +2,12 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { SEO } from '../components/SEO';
-import { blogPosts } from '../data/blogPosts';
+import { useSite } from '../context/SiteContext'; // Use dynamic data
 import { ArrowRight, Calendar, Tag } from 'lucide-react';
 
 const Blog: React.FC = () => {
+  const { blogPosts } = useSite(); // Get dynamic posts
+
   return (
     <div className="bg-[#d9d9d9] min-h-screen">
       <SEO 
