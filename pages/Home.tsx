@@ -5,6 +5,7 @@ import { ArrowRight, CheckCircle2, Calendar, PhoneCall, MessageSquare, Clock, Ba
 import { Button } from '../components/Button';
 import { useSite } from '../context/SiteContext';
 import { MediaRenderer } from '../components/MediaRenderer';
+import { SEO } from '../components/SEO';
 
 const Home: React.FC = () => {
   const { content } = useSite();
@@ -21,14 +22,19 @@ const Home: React.FC = () => {
 
   return (
     <div className="w-full">
+      <SEO 
+        title="AI Appointment Setter | Automated 24/7 Phone Answering for Businesses"
+        description="Automate inbound calls, appointment scheduling, and repetitive customer questions with Tara AI Appointment Setter. Human-like voice, customizable instructions, and 24/7 availability."
+      />
+
       {/* Hero Section */}
       <section className="relative bg-[#d9d9d9] overflow-hidden min-h-[600px] flex items-center">
-        {/* Background Layer - Supports Video or Image */}
+        {/* Background Layer */}
         <div className="absolute inset-0 z-0">
            {content.images.homeHeroBg && (
              <MediaRenderer 
                src={getBustedUrl(content.images.homeHeroBg)} 
-               alt="Hero Background"
+               alt="AI receptionist for business dashboard background"
                className="w-full h-full object-cover opacity-10"
                videoClassName="w-full h-full object-cover opacity-10"
              />
@@ -40,7 +46,7 @@ const Home: React.FC = () => {
             <div className="space-y-8 animate-fade-in-up">
               <div className="inline-flex items-center px-4 py-2 rounded-full bg-[#0097b2]/10 text-[#0097b2] text-sm font-semibold">
                 <span className="flex h-2 w-2 rounded-full bg-[#0097b2] mr-2"></span>
-                AI-Powered Appointment Setting
+                AI Phone Agent for Small Business
               </div>
               <h1 className="text-4xl lg:text-6xl font-bold text-slate-900 leading-tight">
                 {content.home.heroTitle}
@@ -67,7 +73,7 @@ const Home: React.FC = () => {
                  <iframe 
                    className="absolute top-0 left-0 w-full h-full"
                    src="https://www.youtube-nocookie.com/embed/0LT64_mgkro?rel=0&modestbranding=1" 
-                   title="Tara Voice Assistant Demo" 
+                   title="Tara Voice Assistant Demo - AI Call Answering Software" 
                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
                    allowFullScreen
                  ></iframe>
@@ -77,7 +83,7 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* About Summary */}
+      {/* About Summary - Keyword Optimized First 100 Words */}
       <section className="py-20 bg-[#d9d9d9]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl font-bold text-slate-900 mb-6">{content.home.aboutTitle}</h2>
@@ -85,7 +91,7 @@ const Home: React.FC = () => {
             {content.home.aboutText}
           </p>
           <p className="text-lg text-slate-600 leading-relaxed">
-            Our mission is to revolutionize customer engagement through innovative, scalable automation that reduces costs, saves time, and enhances customer satisfaction.
+            Our mission is to revolutionize customer engagement by providing the best <strong>AI call answering software</strong> on the market. We help you <strong>reduce inbound calls automation</strong> friction, creating scalable automation that lowers costs and saves time. As a premier <strong>AI virtual receptionist service</strong>, Tara ensures every missed call becomes a booked appointment.
           </p>
         </div>
       </section>
@@ -103,7 +109,7 @@ const Home: React.FC = () => {
                    <div className="order-1 md:order-2">
                       <MediaRenderer 
                         src={getBustedUrl(section.image)} 
-                        alt={section.title} 
+                        alt={`${section.title} - AI Phone Answering System`} 
                         className="rounded-2xl shadow-lg w-full h-auto object-cover" 
                       />
                    </div>
@@ -113,20 +119,20 @@ const Home: React.FC = () => {
         </section>
       ))}
 
-      {/* Key Features Grid */}
+      {/* Key Features Grid - Mid Intent Keywords */}
       <section className="py-20 bg-[#d9d9d9]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-slate-900">Powerful Features</h2>
-            <p className="mt-4 text-slate-600">Everything you need to automate your front desk.</p>
+            <h2 className="text-3xl font-bold text-slate-900">Powerful AI Call Handler Features</h2>
+            <p className="mt-4 text-slate-600">Everything you need in a modern business phone automation tool.</p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
              {[
-               { icon: Calendar, title: "AI Scheduling", desc: "Seamlessly books appointments directly into your calendar." },
-               { icon: MessageSquare, title: "FAQ Answering", desc: "Instantly answers common customer questions accurately." },
-               { icon: Clock, title: "24/7 Handling", desc: "Never miss a call, day or night, weekends or holidays." },
+               { icon: Calendar, title: "Automated Appointment Scheduling", desc: "Seamlessly books appointments directly into your calendar using AI." },
+               { icon: MessageSquare, title: "FAQ Answering & Support", desc: "Instantly answers common customer questions accurately without human intervention." },
+               { icon: Clock, title: "24/7 Automated Phone Answering", desc: "Never miss a call, day or night, weekends or holidays." },
                { icon: CheckCircle2, title: "Calendar Sync", desc: "Native integration with Cal.com and other major providers." },
-               { icon: PhoneCall, title: "Human-like Voice", desc: "Natural conversations that feel like talking to a real person." },
+               { icon: PhoneCall, title: "Human-like AI Voice", desc: "Natural conversations that feel like talking to a real person." },
                { icon: BarChart3, title: "Business Insights", desc: "Analytics on call volume, peak times, and customer intent." },
              ].map((feature, idx) => (
                <div key={idx} className="bg-white p-8 rounded-2xl shadow-sm hover:shadow-md transition-shadow border border-slate-200 group">
@@ -141,7 +147,7 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* Industries */}
+      {/* Industries - Long Tail Keywords */}
       <section className="py-20 bg-black text-white relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-[#0097b2] rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
@@ -149,10 +155,16 @@ const Home: React.FC = () => {
              <div>
                <h2 className="text-3xl lg:text-4xl font-bold mb-6">Industries We Serve</h2>
                <p className="text-slate-300 text-lg mb-8">
-                 Tara adapts to the specific needs of service-based businesses, ensuring professional handling of industry-specific terminology and scheduling requirements.
+                 Tara adapts to the specific needs of service-based businesses, acting as a tailored AI receptionist for various sectors.
                </p>
                <ul className="space-y-4">
-                 {['Healthcare Providers', 'Salons & Spas', 'Home Services', 'Fitness Centers', 'Service-based SMBs'].map((item, i) => (
+                 {[
+                   'AI Appointment Setter for Clinics & Medical', 
+                   'AI Receptionist for Salons & Spas', 
+                   'Home Services & HVAC Answering', 
+                   'Automotive & Dealership Inbound Automation', 
+                   'Legal Intake & Law Firm Reception'
+                 ].map((item, i) => (
                    <li key={i} className="flex items-center space-x-3 text-lg font-medium">
                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0097b2] flex items-center justify-center">
                        <CheckCircle2 className="w-4 h-4 text-white" />
@@ -167,14 +179,14 @@ const Home: React.FC = () => {
                   <MediaRenderer 
                     src={getBustedUrl(content.images.homeIndustry1)} 
                     className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity w-full h-48 object-cover" 
-                    alt="Healthcare" 
+                    alt="AI appointment setter for clinics" 
                   />
                 )}
                 {content.images.homeIndustry2 && (
                   <MediaRenderer 
                     src={getBustedUrl(content.images.homeIndustry2)} 
                     className="rounded-2xl opacity-80 hover:opacity-100 transition-opacity mt-8 w-full h-48 object-cover" 
-                    alt="Salon" 
+                    alt="AI receptionist for salons" 
                   />
                 )}
              </div>
@@ -198,7 +210,7 @@ const Home: React.FC = () => {
                    <PhoneCall className="w-8 h-8" />
                  </div>
                  <h3 className="text-xl font-bold mb-2">1. Call Comes In</h3>
-                 <p className="text-slate-500">Customer calls your existing business number. Tara picks up instantly.</p>
+                 <p className="text-slate-500">Customer calls your existing business number. Tara picks up instantly as your <strong>AI virtual receptionist</strong>.</p>
                </div>
 
                <div className="bg-white p-6 rounded-xl border-2 border-slate-200 text-center relative">
@@ -206,7 +218,7 @@ const Home: React.FC = () => {
                    <Mic2 className="w-8 h-8" />
                  </div>
                  <h3 className="text-xl font-bold mb-2">2. Natural Conversation</h3>
-                 <p className="text-slate-500">AI understands intent, answers questions, and qualifies the lead.</p>
+                 <p className="text-slate-500">The <strong>voice AI</strong> understands intent, answers questions, and qualifies the lead.</p>
                </div>
 
                <div className="bg-white p-6 rounded-xl border-2 border-slate-200 text-center relative">
@@ -214,7 +226,7 @@ const Home: React.FC = () => {
                    <Calendar className="w-8 h-8" />
                  </div>
                  <h3 className="text-xl font-bold mb-2">3. Synced & Booked</h3>
-                 <p className="text-slate-500">Appointment is added to your Cal.com calendar and you get notified.</p>
+                 <p className="text-slate-500">Appointment is added to your Cal.com calendar via <strong>automated appointment scheduling</strong>.</p>
                </div>
              </div>
           </div>
@@ -224,7 +236,7 @@ const Home: React.FC = () => {
       {/* Benefits */}
       <section className="py-20 bg-[#d9d9d9]">
          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-3xl font-bold text-center mb-12">Why Choose Tara?</h2>
+            <h2 className="text-3xl font-bold text-center mb-12">Why Choose an AI Call Handler?</h2>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                {[
                  "Increased Productivity",
