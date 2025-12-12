@@ -34,6 +34,9 @@ const Contact: React.FC = () => {
     }
 
     try {
+      // NOTE: The third argument 'formRef.current' automatically extracts values 
+      // from inputs based on their 'name' attribute.
+      // Your inputs MUST have names: user_name, user_email, user_phone, message
       await emailjs.sendForm(serviceId, templateId, formRef.current, publicKey);
       setStatus('success');
       formRef.current.reset();
@@ -43,7 +46,6 @@ const Contact: React.FC = () => {
       
       let msg = error?.text || "Something went wrong. Please try again or email us directly at info@taravoiceassistant.com";
 
-      // Handle specific "Invalid grant" error (Gmail Token Expired) gracefully
       if (error?.text && error.text.includes("Invalid grant")) {
          console.warn("⚠️ ADMIN ACTION REQUIRED: Your EmailJS connection to Gmail has expired. Go to EmailJS Dashboard and Reconnect.");
          msg = "Our messaging system is currently undergoing maintenance. Please email us directly at info@taravoiceassistant.com.";
@@ -116,6 +118,13 @@ const Contact: React.FC = () => {
                     <input type="email" name="user_email" required className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#0097b2] outline-none" placeholder="john@example.com" />
                  </div>
               </div>
+              
+              {/* Added Phone Number Field to match Setup Guide */}
+              <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
+                  <input type="tel" name="user_phone" className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#0097b2] outline-none" placeholder="(555) 123-4567" />
+              </div>
+
               <div>
                  <label className="block text-sm font-medium text-slate-700 mb-1">How can we help?</label>
                  <textarea rows={4} name="message" required className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#0097b2] outline-none resize-none" placeholder="Tell us about your needs..." />
