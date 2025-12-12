@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { storage, ensureAuth } from '../firebase';
+import { storage, ensureAuth, bucketName } from '../firebase';
 import { ref, getDownloadURL, uploadBytes } from 'firebase/storage';
 import { blogPosts as staticBlogPosts } from '../data/blogPosts';
 import { CustomSection, BlogPost } from '../types'; // Import types
@@ -53,12 +53,12 @@ const staticImageMap: SiteImages = {
   homeHeroBg: '/images/home_hero.png',
   homeIndustry1: '/images/industry_1.png',
   homeIndustry2: '/images/industry_2.png',
-  feature1: '/images/feature_1.gif',
-  feature2: '/images/feature_2.gif',
-  feature3: '/images/feature_3.gif',
-  feature4: '/images/feature_4.gif',
-  feature5: '/images/feature_5.gif',
-  feature6: '/images/feature_6.gif',
+  feature1: '/images/feature_1.png',
+  feature2: '/images/feature_2.png',
+  feature3: '/images/feature_3.png',
+  feature4: '/images/feature_4.png',
+  feature5: '/images/feature_5.png',
+  feature6: '/images/feature_6.png',
   aboutTeam: '/images/about_team.png',
   aboutFuture: '/images/about_future.png',
 };
@@ -96,12 +96,24 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const initSite = useCallback(async () => {
     setIsStorageConfigured(!!storage);
 
-    // 1. Fetch Text Config
+    // 1. Fetch Text Config (Local Draft Check)
     let localConfig: SiteContent | null = null;
     try {
       const localStr = localStorage.getItem('tara_site_config');
       if (localStr) localConfig = JSON.parse(localStr);
     } catch (e) {}
+
+    // 1.1 Fetch Blog Drafts
+    try {
+        const localBlog = localStorage.getItem('tara_blog_posts');
+        if (localBlog) {
+            const parsed = JSON.parse(localBlog);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                setBlogPosts(parsed);
+                console.log("📝 BLOG CONTEXT: Loaded local drafts.");
+            }
+        }
+    } catch(e) {}
 
     if (storage) {
        ensureAuth().catch(() => {});
@@ -138,17 +150,34 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
            }
        } catch (e) {}
 
-       // 2. Fetch Blog Posts from Firebase (Separate file)
+       // 2. Fetch Blog Posts from Firebase (Robust Strategy)
        try {
-         const blogRef = ref(storage, 'config/blog_posts.json');
-         const blogUrl = await getDownloadURL(blogRef);
-         const blogRes = await fetch(blogUrl + `?t=${Date.now()}`);
-         if (blogRes.ok) {
-           const fetchedPosts = await blogRes.json();
-           if (Array.isArray(fetchedPosts) && fetchedPosts.length > 0) {
-             console.log("Found dynamic blog posts:", fetchedPosts.length);
+         let fetchedPosts: BlogPost[] | null = null;
+
+         // Strategy A: SDK
+         try {
+             const blogRef = ref(storage, 'config/blog_posts.json');
+             const blogUrl = await getDownloadURL(blogRef);
+             const blogRes = await fetch(blogUrl + `?t=${Date.now()}`);
+             if (blogRes.ok) {
+                 fetchedPosts = await blogRes.json();
+             }
+         } catch(e) { console.log("SDK Fetch for blog failed, trying fallback."); }
+
+         // Strategy B: Direct HTTP Fallback (if SDK blocked)
+         if (!fetchedPosts && bucketName) {
+            try {
+                // Manually construct URL to bypass SDK auth requirements if public
+                const url = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/config%2Fblog_posts.json?alt=media&t=${Date.now()}`;
+                const res = await fetch(url);
+                if (res.ok) fetchedPosts = await res.json();
+            } catch(e) {}
+         }
+
+         if (Array.isArray(fetchedPosts) && fetchedPosts.length > 0) {
+             console.log("🔥 BLOG CONTEXT: Found dynamic posts:", fetchedPosts.length);
              setBlogPosts(fetchedPosts);
-           }
+             safeSetItem('tara_blog_posts', JSON.stringify(fetchedPosts)); // Update local cache
          }
        } catch (e) {
          console.log("No dynamic blog posts found, using static default.");
@@ -210,6 +239,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatedPosts.unshift(post); // Add new to top
     }
     setBlogPosts(updatedPosts);
+    safeSetItem('tara_blog_posts', JSON.stringify(updatedPosts)); // Persist draft immediately
+    
     // Immediate auto-save to cloud for Blog
     await saveToCloud(content, updatedPosts); 
   };
@@ -217,6 +248,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteBlogPost = async (id: string) => {
     const updatedPosts = blogPosts.filter(p => p.id !== id);
     setBlogPosts(updatedPosts);
+    safeSetItem('tara_blog_posts', JSON.stringify(updatedPosts));
     await saveToCloud(content, updatedPosts);
   };
 
