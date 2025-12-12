@@ -5,6 +5,7 @@ import { Button } from '../components/Button';
 import { Link } from 'react-router-dom';
 import { useSite } from '../context/SiteContext';
 import { MediaRenderer } from '../components/MediaRenderer';
+import { SEO } from '../components/SEO';
 
 const Features: React.FC = () => {
   const { content } = useSite();
@@ -63,10 +64,15 @@ const Features: React.FC = () => {
 
   return (
     <div className="bg-[#d9d9d9]">
+      <SEO 
+        title="AI Call Answering Software & Features | Reduce Inbound Calls"
+        description="Explore features of Tara AI: Appointment booking automation, dynamic call routing, calendar syncing, and business insights. The complete voice AI for call centers and SMBs."
+      />
+
       <div className="bg-[#d9d9d9] py-16 border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl font-bold text-slate-900">Features</h1>
-          <p className="mt-4 text-xl text-slate-600">Advanced capabilities to power your front desk.</p>
+          <h1 className="text-4xl font-bold text-slate-900">AI Call Answering Software Features</h1>
+          <p className="mt-4 text-xl text-slate-600">Advanced capabilities to power your front desk and <strong>reduce inbound calls automation</strong> friction.</p>
         </div>
       </div>
 
@@ -88,7 +94,7 @@ const Features: React.FC = () => {
                     <div className="relative rounded-2xl overflow-hidden group">
                       <MediaRenderer 
                         src={currentImg} 
-                        alt={feature.title} 
+                        alt={`${feature.title} - AI Call Handler Feature`} 
                         className="w-full h-auto transform group-hover:scale-105 transition-transform duration-700 object-cover"
                       />
                     </div>
