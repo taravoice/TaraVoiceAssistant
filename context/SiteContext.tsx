@@ -2,14 +2,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { storage, ensureAuth } from '../firebase';
 import { ref, getDownloadURL, uploadBytes } from 'firebase/storage';
+import { blogPosts as staticBlogPosts } from '../data/blogPosts';
+import { CustomSection, BlogPost } from '../types'; // Import types
 
-export interface CustomSection {
-  id: string;
-  title: string;
-  content: string;
-  image?: string; // Not used in static mode, but kept for type compatibility
-  page: string; 
-}
+export type { CustomSection, BlogPost };
 
 interface SiteImages {
   [key: string]: string;
@@ -24,18 +20,19 @@ interface SiteContent {
   };
   customSections: CustomSection[];
   images: SiteImages;
-  gallery: string[]; // Unused in static mode
+  gallery: string[];
   updatedAt: number;
 }
 
 interface SiteContextType {
   content: SiteContent;
+  blogPosts: BlogPost[]; // Dynamic Blog Posts
   updateHomeContent: (key: keyof SiteContent['home'], value: any) => Promise<void>;
   addCustomSection: (section: CustomSection) => Promise<void>;
   removeCustomSection: (id: string) => Promise<void>;
-  updateImage: (key: string, url: string) => Promise<void>; // Deprecated
-  uploadToGallery: (file: File) => Promise<void>; // Deprecated
-  removeFromGallery: (url: string) => Promise<void>; // Deprecated
+  updateImage: (key: string, url: string) => Promise<void>;
+  uploadToGallery: (file: File) => Promise<void>;
+  removeFromGallery: (url: string) => Promise<void>;
   logVisit: (path: string) => Promise<void>;
   isAuthenticated: boolean;
   isStorageConfigured: boolean;
@@ -47,21 +44,21 @@ interface SiteContextType {
   hasUnsavedChanges: boolean;
   publishSite: () => Promise<void>;
   forceSync: () => Promise<void>;
+  saveBlogPost: (post: BlogPost) => Promise<void>;
+  deleteBlogPost: (id: string) => Promise<void>;
 }
 
-// STATIC FILE MAPPING
-// These paths correspond to files you must upload to 'public/images/' in your GitHub repo.
 const staticImageMap: SiteImages = {
-  logo: '/logo.png', // Root level
+  logo: '/logo.png',
   homeHeroBg: '/images/home_hero.png',
   homeIndustry1: '/images/industry_1.png',
   homeIndustry2: '/images/industry_2.png',
-  feature1: '/images/feature_1.gif',
-  feature2: '/images/feature_2.gif',
-  feature3: '/images/feature_3.gif',
-  feature4: '/images/feature_4.gif',
-  feature5: '/images/feature_5.gif',
-  feature6: '/images/feature_6.gif',
+  feature1: '/images/feature_1.png',
+  feature2: '/images/feature_2.png',
+  feature3: '/images/feature_3.png',
+  feature4: '/images/feature_4.png',
+  feature5: '/images/feature_5.png',
+  feature6: '/images/feature_6.png',
   aboutTeam: '/images/about_team.png',
   aboutFuture: '/images/about_future.png',
 };
@@ -83,6 +80,7 @@ const SiteContext = createContext<SiteContextType | undefined>(undefined);
 
 export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [content, setContent] = useState<SiteContent>(initialContent);
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>(staticBlogPosts); // Init with static
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isStorageConfigured, setIsStorageConfigured] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -91,7 +89,6 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   const adminPassword = localStorage.getItem('tara_admin_pw') || '987654321';
 
-  // Helper for mobile storage safety
   const safeSetItem = (key: string, value: string) => {
     try { localStorage.setItem(key, value); } catch (e) {}
   };
@@ -99,22 +96,20 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const initSite = useCallback(async () => {
     setIsStorageConfigured(!!storage);
 
-    // 1. Check Local Draft for TEXT changes (Images are static now)
+    // 1. Fetch Text Config
     let localConfig: SiteContent | null = null;
     try {
       const localStr = localStorage.getItem('tara_site_config');
       if (localStr) localConfig = JSON.parse(localStr);
     } catch (e) {}
 
-    // 2. Fetch Cloud Text Config
     if (storage) {
-       ensureAuth().catch(() => {}); // Non-blocking auth
+       ensureAuth().catch(() => {});
 
        try {
-           // Direct Pointer Fetch Strategy
            const pointerRef = ref(storage, 'config/current.json');
            const pointerUrl = await getDownloadURL(pointerRef);
-           const pRes = await fetch(pointerUrl + `?t=${Date.now()}`); // Cache bust pointer
+           const pRes = await fetch(pointerUrl + `?t=${Date.now()}`);
            
            if (pRes.ok) {
               const pData = await pRes.json();
@@ -125,26 +120,14 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
                  
                  if (vRes.ok) {
                     const cloudConfig = await vRes.json();
+                    const merged = { ...initialContent, ...cloudConfig, images: staticImageMap };
                     
-                    // MERGE LOGIC: 
-                    // 1. Keep Cloud Text
-                    // 2. FORCE Static Images (Ignore cloud images)
-                    const merged = { 
-                        ...initialContent, 
-                        ...cloudConfig,
-                        images: staticImageMap // Force static paths
-                    };
-                    
-                    // Check draft status
                     const cloudTime = cloudConfig.updatedAt || 0;
                     const localTime = localConfig?.updatedAt || 0;
                     
                     if (localTime > cloudTime) {
                         setHasUnsavedChanges(true);
-                        // If local exists, use it, but ensure images are static
-                        if (localConfig) {
-                            setContent({ ...localConfig, images: staticImageMap });
-                        }
+                        if (localConfig) setContent({ ...localConfig, images: staticImageMap });
                     } else {
                         setContent(merged);
                         safeSetItem('tara_site_config', JSON.stringify(merged));
@@ -153,8 +136,22 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
                  }
               }
            }
+       } catch (e) {}
+
+       // 2. Fetch Blog Posts from Firebase (Separate file)
+       try {
+         const blogRef = ref(storage, 'config/blog_posts.json');
+         const blogUrl = await getDownloadURL(blogRef);
+         const blogRes = await fetch(blogUrl + `?t=${Date.now()}`);
+         if (blogRes.ok) {
+           const fetchedPosts = await blogRes.json();
+           if (Array.isArray(fetchedPosts) && fetchedPosts.length > 0) {
+             console.log("Found dynamic blog posts:", fetchedPosts.length);
+             setBlogPosts(fetchedPosts);
+           }
+         }
        } catch (e) {
-           console.warn("Cloud config load failed, using defaults/local", e);
+         console.log("No dynamic blog posts found, using static default.");
        }
     }
     
@@ -165,27 +162,26 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initSite();
   }, [initSite]);
 
-  const saveToCloud = useCallback(async (newContent: SiteContent) => {
+  const saveToCloud = useCallback(async (newContent: SiteContent, newBlogPosts?: BlogPost[]) => {
     if (!storage) throw new Error("Storage not configured.");
 
-    // Enforce static images before saving (Clean any accidental URLs)
     const saveData = { ...newContent, images: staticImageMap };
-    
     const timestamp = saveData.updatedAt;
-    const contentBlob = new Blob([JSON.stringify(saveData)], { type: 'application/json' });
-
-    // Strict Metadata
     const meta = { contentType: 'application/json', cacheControl: 'no-cache, no-store, max-age=0' };
 
-    // 1. Versioned File
+    const contentBlob = new Blob([JSON.stringify(saveData)], { type: 'application/json' });
     const versionFilename = `site_config_v_${timestamp}.json`;
-    const versionRef = ref(storage, `config/${versionFilename}`);
-    await uploadBytes(versionRef, contentBlob, meta);
-
-    // 2. Pointer File
+    
+    await uploadBytes(ref(storage, `config/${versionFilename}`), contentBlob, meta);
+    
     const pointerData = { version: versionFilename, updatedAt: timestamp };
-    const pointerRef = ref(storage, 'config/current.json');
-    await uploadBytes(pointerRef, new Blob([JSON.stringify(pointerData)], { type: 'application/json' }), meta);
+    await uploadBytes(ref(storage, 'config/current.json'), new Blob([JSON.stringify(pointerData)], { type: 'application/json' }), meta);
+
+    // Save Blog Posts if provided
+    if (newBlogPosts) {
+      const blogBlob = new Blob([JSON.stringify(newBlogPosts)], { type: 'application/json' });
+      await uploadBytes(ref(storage, 'config/blog_posts.json'), blogBlob, meta);
+    }
 
     setSyncError(null);
   }, []);
@@ -197,12 +193,31 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
      }
      const timestamp = Date.now();
      const contentToPublish = { ...content, updatedAt: timestamp, images: staticImageMap };
-     
      setContent(contentToPublish);
      setHasUnsavedChanges(false);
      safeSetItem('tara_site_config', JSON.stringify(contentToPublish));
+     
+     // Pass current blogPosts to saveToCloud to ensure they persist
+     await saveToCloud(contentToPublish, blogPosts);
+  };
 
-     await saveToCloud(contentToPublish);
+  const saveBlogPost = async (post: BlogPost) => {
+    const updatedPosts = [...blogPosts];
+    const index = updatedPosts.findIndex(p => p.id === post.id);
+    if (index >= 0) {
+      updatedPosts[index] = post;
+    } else {
+      updatedPosts.unshift(post); // Add new to top
+    }
+    setBlogPosts(updatedPosts);
+    // Immediate auto-save to cloud for Blog
+    await saveToCloud(content, updatedPosts); 
+  };
+
+  const deleteBlogPost = async (id: string) => {
+    const updatedPosts = blogPosts.filter(p => p.id !== id);
+    setBlogPosts(updatedPosts);
+    await saveToCloud(content, updatedPosts);
   };
 
   const updateStateAndDraft = (updater: (prev: SiteContent) => SiteContent) => {
@@ -238,10 +253,9 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   };
 
-  // Deprecated Image Functions (No-ops)
-  const updateImage = async () => { console.log("Images are now managed via GitHub files."); };
-  const uploadToGallery = async () => { alert("Please upload images directly to GitHub 'public/images/' folder."); };
-  const removeFromGallery = async () => { };
+  const updateImage = async () => {};
+  const uploadToGallery = async () => {};
+  const removeFromGallery = async () => {};
   const forceSync = async () => { await publishSite(); };
   
   const login = (input: string) => {
@@ -257,11 +271,11 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <SiteContext.Provider value={{ 
-      content, updateHomeContent, addCustomSection, removeCustomSection, 
+      content, blogPosts, updateHomeContent, addCustomSection, removeCustomSection, 
       updateImage, uploadToGallery, removeFromGallery, logVisit, 
       isAuthenticated, isStorageConfigured, syncError, 
       login, logout, changePassword, isInitialized, hasUnsavedChanges, 
-      publishSite, forceSync
+      publishSite, forceSync, saveBlogPost, deleteBlogPost
     }}>
       {children}
     </SiteContext.Provider>
