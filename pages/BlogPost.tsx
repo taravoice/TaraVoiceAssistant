@@ -1,21 +1,23 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, Link, Navigate } from 'react-router-dom';
 import { SEO } from '../components/SEO';
 import { useSite } from '../context/SiteContext'; // Use dynamic data
-import { ArrowLeft, Calendar, Tag, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Calendar, Tag, ChevronRight, X } from 'lucide-react';
 import { Button } from '../components/Button';
 
 const BlogPost: React.FC = () => {
   const { slug } = useParams();
   const { blogPosts } = useSite(); // Get dynamic posts
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   
   // Find the post from context
   const post = blogPosts.find(p => p.slug === slug);
 
-  // Scroll to top when slug changes
+  // Scroll to top when slug changes and reset filter
   useEffect(() => {
     window.scrollTo(0, 0);
+    setSelectedCategory(null);
   }, [slug]);
 
   if (!post) {
@@ -24,8 +26,17 @@ const BlogPost: React.FC = () => {
     return <Navigate to="/blog" replace />;
   }
 
-  // Filter out current post for the sidebar list
-  const otherPosts = blogPosts.filter(p => p.id !== post.id);
+  // 1. Get all available categories
+  const allCategories = Array.from(new Set(blogPosts.map(p => p.category)));
+
+  // 2. Filter the Sidebar List based on selection
+  // Always exclude current post
+  let sidebarPosts = blogPosts.filter(p => p.id !== post.id);
+  
+  // If category is selected, filter by it
+  if (selectedCategory) {
+      sidebarPosts = sidebarPosts.filter(p => p.category === selectedCategory);
+  }
 
   return (
     <div className="bg-[#d9d9d9] min-h-screen">
@@ -77,39 +88,68 @@ const BlogPost: React.FC = () => {
             {/* Sidebar Navigation Column */}
             <div className="lg:col-span-4 space-y-8">
                
-               {/* Search / Filter Placeholder (Visual only) */}
+               {/* Search / Filter (Now Functional) */}
                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                  <h3 className="font-bold text-slate-900 mb-4">Explore Topics</h3>
+                  <div className="flex justify-between items-center mb-4">
+                     <h3 className="font-bold text-slate-900">Explore Topics</h3>
+                     {selectedCategory && (
+                        <button 
+                           onClick={() => setSelectedCategory(null)}
+                           className="text-xs text-slate-400 hover:text-[#0097b2] flex items-center transition-colors"
+                        >
+                           <X className="w-3 h-3 mr-1" /> Clear
+                        </button>
+                     )}
+                  </div>
                   <div className="flex flex-wrap gap-2">
-                     {Array.from(new Set(blogPosts.map(p => p.category))).map(cat => (
-                        <span key={cat} className="text-xs font-medium bg-slate-100 text-slate-600 px-3 py-1 rounded-full border border-slate-200">
+                     {allCategories.map(cat => (
+                        <button 
+                           key={cat} 
+                           onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
+                           className={`text-xs font-medium px-3 py-1 rounded-full border transition-all duration-200 ${
+                              selectedCategory === cat 
+                              ? 'bg-[#0097b2] text-white border-[#0097b2] shadow-md transform scale-105'
+                              : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-[#0097b2] hover:text-[#0097b2]'
+                           }`}
+                        >
                            {cat}
-                        </span>
+                        </button>
                      ))}
                   </div>
                </div>
 
-               {/* More Articles List */}
-               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden sticky top-24">
-                  <div className="p-6 border-b border-slate-100 bg-slate-50">
-                     <h3 className="font-bold text-slate-900">More Articles</h3>
+               {/* More Articles List (Filtered) */}
+               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden sticky top-24 transition-all duration-300">
+                  <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                     <h3 className="font-bold text-slate-900">
+                        {selectedCategory ? `${selectedCategory} Articles` : 'More Articles'}
+                     </h3>
+                     <span className="text-xs font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">
+                        {sidebarPosts.length}
+                     </span>
                   </div>
                   <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
-                     {otherPosts.map(op => (
-                        <Link 
-                           key={op.id} 
-                           to={`/blog/${op.slug}`}
-                           className="block p-4 hover:bg-slate-50 transition-colors group"
-                        >
-                           <h4 className="font-semibold text-slate-800 text-sm mb-1 group-hover:text-[#0097b2] line-clamp-2">
-                              {op.title}
-                           </h4>
-                           <div className="flex items-center justify-between mt-2">
-                              <span className="text-xs text-slate-400">{op.date}</span>
-                              <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-[#0097b2]" />
-                           </div>
-                        </Link>
-                     ))}
+                     {sidebarPosts.length > 0 ? (
+                        sidebarPosts.map(op => (
+                           <Link 
+                              key={op.id} 
+                              to={`/blog/${op.slug}`}
+                              className="block p-4 hover:bg-slate-50 transition-colors group"
+                           >
+                              <h4 className="font-semibold text-slate-800 text-sm mb-1 group-hover:text-[#0097b2] line-clamp-2">
+                                 {op.title}
+                              </h4>
+                              <div className="flex items-center justify-between mt-2">
+                                 <span className="text-xs text-slate-400">{op.date}</span>
+                                 <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-[#0097b2]" />
+                              </div>
+                           </Link>
+                        ))
+                     ) : (
+                        <div className="p-8 text-center text-slate-400 text-sm italic">
+                           No other articles found in this category.
+                        </div>
+                     )}
                   </div>
                </div>
 
