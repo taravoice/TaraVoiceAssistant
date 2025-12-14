@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { storage, ensureAuth } from '../firebase';
-import { ref, getDownloadURL, uploadBytes } from 'firebase/storage';
+import { ref, getDownloadURL, uploadBytes, uploadString } from 'firebase/storage';
 import { blogPosts as staticBlogPosts } from '../data/blogPosts';
 import { CustomSection, BlogPost } from '../types';
 
@@ -34,6 +34,7 @@ interface SiteContextType {
   uploadToGallery: (file: File) => Promise<void>;
   removeFromGallery: (url: string) => Promise<void>;
   logVisit: (path: string) => Promise<void>;
+  subscribeToNewsletter: (email: string) => Promise<void>;
   isAuthenticated: boolean;
   isStorageConfigured: boolean;
   syncError: string | null;
@@ -213,6 +214,26 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   };
 
+  // Newsletter Logic
+  const subscribeToNewsletter = async (email: string) => {
+    if (!storage) throw new Error("Storage not configured.");
+    
+    await ensureAuth();
+    
+    const timestamp = Date.now();
+    const id = Math.random().toString(36).substring(2, 9);
+    const data = {
+      email,
+      date: new Date().toISOString(),
+      timestamp
+    };
+
+    const fileRef = ref(storage, `newsletter/sub_${timestamp}_${id}.json`);
+    await uploadString(fileRef, JSON.stringify(data), 'raw', {
+      contentType: 'application/json'
+    });
+  };
+
   const updateImage = async () => {};
   const uploadToGallery = async () => {};
   const removeFromGallery = async () => {};
@@ -235,6 +256,7 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
       blogPosts: staticBlogPosts, 
       updateHomeContent, addCustomSection, removeCustomSection, 
       updateImage, uploadToGallery, removeFromGallery, logVisit, 
+      subscribeToNewsletter,
       isAuthenticated, isStorageConfigured, syncError, 
       login, logout, changePassword, isInitialized, hasUnsavedChanges, 
       publishSite, forceSync
