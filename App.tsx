@@ -19,6 +19,7 @@ import ContentManager from './pages/admin/ContentManager';
 import MediaManager from './pages/admin/MediaManager';
 import Gallery from './pages/admin/Gallery';
 import Settings from './pages/admin/Settings';
+import Newsletter from './pages/admin/Newsletter';
 import { SiteProvider, useSite } from './context/SiteContext';
 
 function ScrollToTop() {
@@ -53,6 +54,7 @@ function App() {
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin" element={<AdminLayout />}>
              <Route path="dashboard" element={<Dashboard />} />
+             <Route path="newsletter" element={<Newsletter />} />
              <Route path="content" element={<ContentManager />} />
              <Route path="media" element={<MediaManager />} />
              <Route path="gallery" element={<Gallery />} />
