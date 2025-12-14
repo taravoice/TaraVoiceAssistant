@@ -1,3 +1,4 @@
+
 // @ts-nocheck
 import { storage, ensureAuth } from '../firebase';
 import { ref, uploadString } from 'firebase/storage';
@@ -21,7 +22,8 @@ export default async function handler(req, res) {
     // 3. Generate a unique filename based on time
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(7);
-    const filename = `analytics/${timestamp}_${randomId}.json`;
+    // CRITICAL: Must be in analytics/logs/ for Dashboard to list it
+    const filename = `analytics/logs/${timestamp}_${randomId}.json`;
 
     // 4. Create a reference
     const storageRef = ref(storage, filename);
