@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Link, useLocation, Navigate, Outlet } from 'react-router-dom';
-import { LayoutDashboard, FileText, Image as ImageIcon, Settings as SettingsIcon, LogOut, ExternalLink, Grid, AlertTriangle, CloudOff, Save, Loader2, CheckCircle2 } from 'lucide-react';
+import { LayoutDashboard, FileText, Image as ImageIcon, Settings as SettingsIcon, LogOut, ExternalLink, Grid, AlertTriangle, CloudOff, Save, Loader2, CheckCircle2, Mail } from 'lucide-react';
 import { useSite } from '../../context/SiteContext';
 
 const AdminLayout: React.FC = () => {
@@ -29,6 +29,7 @@ const AdminLayout: React.FC = () => {
 
   const navItems = [
     { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
+    { label: 'Newsletter', path: '/admin/newsletter', icon: Mail },
     { label: 'Content Editor', path: '/admin/content', icon: FileText },
     { label: 'Media Manager', path: '/admin/media', icon: ImageIcon },
     { label: 'Gallery', path: '/admin/gallery', icon: Grid },
