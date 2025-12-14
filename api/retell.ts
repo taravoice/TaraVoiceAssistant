@@ -5,7 +5,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key');
 
   if (req.method === 'OPTIONS') {
     res.status(200).end();
@@ -13,6 +13,26 @@ export default async function handler(req, res) {
   }
 
   try {
+    // --- SECURITY CHECK ---
+    // 1. Get the secret from Vercel Environment Variables
+    const mySecret = process.env.RETELL_SECRET_KEY;
+
+    // 2. Only enforce security if the variable is set in Vercel
+    if (mySecret) {
+        const authHeader = req.headers['authorization']; // Expecting "Bearer <key>"
+        const apiKeyHeader = req.headers['x-api-key'];   // Alternative header
+        
+        // Check provided keys against the stored secret
+        const isValidBearer = authHeader && authHeader.split(' ')[1] === mySecret;
+        const isValidApiKey = apiKeyHeader === mySecret;
+
+        if (!isValidBearer && !isValidApiKey) {
+            return res.status(401).json({ error: "Unauthorized: Invalid or missing Secret Key." });
+        }
+    }
+
+    // --- DATA FETCHING ---
+
     // 1. Get Storage Bucket Domain
     let bucket = process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET;
     if (!bucket) {
