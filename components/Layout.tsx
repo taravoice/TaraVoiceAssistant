@@ -1,14 +1,18 @@
 
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, Phone, Mail, Facebook, Twitter, Linkedin, Instagram, Youtube } from 'lucide-react';
+import { Menu, X, Phone, Mail, Facebook, Twitter, Linkedin, Instagram, Youtube, Check, Loader2 } from 'lucide-react';
 import { Button } from './Button';
 import { useSite } from '../context/SiteContext';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
-  const { content } = useSite();
+  const { content, subscribeToNewsletter } = useSite();
+  
+  // Newsletter State
+  const [email, setEmail] = useState('');
+  const [subStatus, setSubStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   const navLinks = [
     { label: 'Home', path: '/' },
@@ -23,14 +27,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     return location.pathname === path ? 'text-[#0097b2] font-semibold' : 'text-slate-600 hover:text-[#0097b2]';
   };
 
-  // Safe logo construction
   const getLogoUrl = () => {
     const rawUrl = content.images.logo;
-    // If explicitly empty, fallback to local logo.png
     if (!rawUrl || rawUrl.trim() === '') return '/logo.png';
-    
-    // If it's a URL (http) or Base64 (data:), use it directly.
-    // For Base64, we don't need timestamps.
     if (rawUrl.startsWith('http')) {
        return `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}t=${content.updatedAt}`;
     }
@@ -39,6 +38,23 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   const finalLogoUrl = getLogoUrl();
 
+  const handleSubscribe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !email.includes('@')) return;
+    
+    setSubStatus('loading');
+    try {
+      await subscribeToNewsletter(email);
+      setSubStatus('success');
+      setEmail('');
+      setTimeout(() => setSubStatus('idle'), 5000);
+    } catch (err) {
+      console.error(err);
+      setSubStatus('error');
+      setTimeout(() => setSubStatus('idle'), 3000);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-[#d9d9d9] font-sans text-slate-900">
       <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
@@ -46,12 +62,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div className="flex justify-between items-center h-20">
             <Link to="/" className="flex items-center group">
               <img 
-                key={content.updatedAt} // Force re-render on content update
+                key={content.updatedAt} 
                 src={finalLogoUrl} 
                 alt="Tara Voice Assistant" 
                 className="h-10 md:h-12 w-auto object-contain transition-all duration-300"
                 onError={(e) => {
-                   // Fallback logic: if image load fails (e.g. broken Base64), switch to local logo
                    const img = e.target as HTMLImageElement;
                    if (img.src !== window.location.origin + '/logo.png') {
                        img.src = '/logo.png';
@@ -173,16 +188,30 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <div>
                <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300 mb-4">Newsletter</h3>
                <p className="text-slate-400 text-sm mb-4">Stay updated with our latest AI features.</p>
-               <div className="flex">
+               <form onSubmit={handleSubscribe} className="flex">
                  <input 
                    type="email" 
+                   value={email}
+                   onChange={(e) => setEmail(e.target.value)}
                    placeholder="Enter your email" 
-                   className="bg-slate-800 border-none text-white px-4 py-2 rounded-l-md w-full outline-none" 
+                   className="bg-slate-800 border-none text-white px-4 py-2 rounded-l-md w-full outline-none focus:ring-1 focus:ring-[#0097b2]"
+                   required
+                   disabled={subStatus === 'loading' || subStatus === 'success'}
                  />
-                 <button className="bg-[#0097b2] px-4 py-2 rounded-r-md hover:bg-[#007f96] transition-colors">
-                   Join
+                 <button 
+                   type="submit" 
+                   disabled={subStatus === 'loading' || subStatus === 'success'}
+                   className={`px-4 py-2 rounded-r-md transition-colors flex items-center justify-center min-w-[70px] ${
+                     subStatus === 'success' ? 'bg-green-600' : 'bg-[#0097b2] hover:bg-[#007f96]'
+                   }`}
+                 >
+                   {subStatus === 'loading' && <Loader2 className="w-4 h-4 animate-spin" />}
+                   {subStatus === 'success' && <Check className="w-4 h-4" />}
+                   {subStatus === 'idle' && 'Join'}
+                   {subStatus === 'error' && 'Retry'}
                  </button>
-               </div>
+               </form>
+               {subStatus === 'success' && <p className="text-green-400 text-xs mt-2">Thanks for subscribing!</p>}
             </div>
           </div>
           
