@@ -221,14 +221,22 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await ensureAuth();
     
     const timestamp = Date.now();
-    const id = Math.random().toString(36).substring(2, 9);
+    // Sanitize email for filename to avoid issues, but keep it readable
+    // Replace non-alphanumeric chars (except @ . - _) with underscores
+    const safeEmail = email.replace(/[^a-zA-Z0-9@._-]/g, '_');
+    
+    // FORMAT: newsletter/EMAIL___TIMESTAMP.json
+    // This allows us to read the email directly from the filename in Admin listAll()
+    // without needing to download the file content (bypassing CORS).
+    const filename = `newsletter/${safeEmail}___${timestamp}.json`;
+    
     const data = {
       email,
       date: new Date().toISOString(),
       timestamp
     };
 
-    const fileRef = ref(storage, `newsletter/sub_${timestamp}_${id}.json`);
+    const fileRef = ref(storage, filename);
     await uploadString(fileRef, JSON.stringify(data), 'raw', {
       contentType: 'application/json'
     });
