@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSite } from '../../context/SiteContext';
@@ -13,13 +14,11 @@ const AdminLogin: React.FC = () => {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Strict Email Validation
     if (email.toLowerCase().trim() !== 'taravoiceassistant@gmail.com') {
        alert('Access Denied: Invalid Email Address.');
        return;
     }
 
-    // Check Password (Dynamic from Context)
     const success = login(password);
     
     if (success) {
@@ -48,7 +47,7 @@ const AdminLogin: React.FC = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#0097b2] focus:border-transparent outline-none"
-              placeholder="taravoiceassistant@gmail.com"
+              placeholder="name@company.com"
             />
           </div>
           <div>
