@@ -222,12 +222,8 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     const timestamp = Date.now();
     // Sanitize email for filename to avoid issues, but keep it readable
-    // Replace non-alphanumeric chars (except @ . - _) with underscores
     const safeEmail = email.replace(/[^a-zA-Z0-9@._-]/g, '_');
     
-    // FORMAT: newsletter/EMAIL___TIMESTAMP.json
-    // This allows us to read the email directly from the filename in Admin listAll()
-    // without needing to download the file content (bypassing CORS).
     const filename = `newsletter/${safeEmail}___${timestamp}.json`;
     
     const data = {
@@ -256,7 +252,39 @@ export const SiteProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
   const logout = () => setIsAuthenticated(false);
   const changePassword = (pw: string) => localStorage.setItem('tara_admin_pw', pw);
-  const logVisit = async () => {};
+  
+  const logVisit = async (path: string) => {
+    if (path.startsWith('/admin')) return;
+    
+    // Basic session ID
+    let sessionId = sessionStorage.getItem('tara_sid');
+    if (!sessionId) {
+        sessionId = Math.random().toString(36).substring(2) + Date.now().toString(36);
+        sessionStorage.setItem('tara_sid', sessionId);
+    }
+
+    const payload = {
+        path,
+        sessionId,
+        timestamp: Date.now(),
+        userAgent: navigator.userAgent,
+        referrer: document.referrer,
+        language: navigator.language,
+        screen: `${window.screen.width}x${window.screen.height}`
+    };
+
+    try {
+        // Send to serverless endpoint to bypass CORS/Auth issues on client
+        await fetch('/api/drain', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            keepalive: true
+        });
+    } catch (e) {
+        // Fail silently for analytics
+    }
+  };
 
   return (
     <SiteContext.Provider value={{ 
