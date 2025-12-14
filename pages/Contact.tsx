@@ -95,7 +95,9 @@ const Contact: React.FC = () => {
                </div>
                <div className="p-6 bg-[#0097b2] rounded-2xl text-white mt-8">
                   <h3 className="font-bold text-lg mb-2">Book a Live Demo</h3>
-                  <Button variant="secondary" className="bg-white text-[#0097b2] hover:bg-slate-100 w-full mt-4">Schedule Demo</Button>
+                  <a href="https://cal.com/taravoiceassistant" target="_blank" rel="noopener noreferrer">
+                    <Button variant="secondary" className="bg-white text-[#0097b2] hover:bg-slate-100 w-full mt-4">Schedule Demo</Button>
+                  </a>
                </div>
             </div>
           </div>
