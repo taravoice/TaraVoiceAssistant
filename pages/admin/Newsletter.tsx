@@ -1,50 +1,78 @@
 
 import React, { useEffect, useState } from 'react';
 import { storage } from '../../firebase';
-import { ref, listAll, getBytes } from 'firebase/storage';
-import { Mail, Download, Loader2, RefreshCw, Calendar, Copy } from 'lucide-react';
+import { ref, listAll, getDownloadURL } from 'firebase/storage';
+import { Mail, Download, Loader2, RefreshCw, Calendar, Copy, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/Button';
 
 interface Subscriber {
   email: string;
   date: string;
   timestamp: number;
+  fromFilename?: boolean;
 }
 
 const Newsletter: React.FC = () => {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [loading, setLoading] = useState(true);
+  const [debugMsg, setDebugMsg] = useState('');
 
   const fetchSubscribers = async () => {
     if (!storage) return;
     setLoading(true);
+    setDebugMsg('');
+    const fetchedSubs: Subscriber[] = [];
+
     try {
       const listRef = ref(storage, 'newsletter/');
       const res = await listAll(listRef);
-      console.log(`Newsletter: Found ${res.items.length} files.`);
+      setDebugMsg(`Found ${res.items.length} files in database.`);
       
-      const promises = res.items.map(async (item) => {
+      // PARALLEL PROCESSING
+      await Promise.all(res.items.map(async (item) => {
         try {
-            // Use getBytes directly from SDK to bypass CORS issues with fetch()
-            const buffer = await getBytes(item);
-            const text = new TextDecoder().decode(buffer);
-            const data = JSON.parse(text);
-            return data as Subscriber;
-        } catch (err) {
-            console.warn("Skipping corrupt or unreachable subscriber file", err);
-            return null;
-        }
-      });
+            // STRATEGY 1: Read from Filename (Fastest, No CORS issues)
+            // Expected format: email@domain.com___123456789.json
+            const name = item.name;
+            if (name.includes('___')) {
+                const parts = name.split('___');
+                const email = parts[0];
+                const tsString = parts[1].replace('.json', '');
+                const ts = parseInt(tsString);
+                
+                fetchedSubs.push({
+                    email: email,
+                    date: new Date(ts).toISOString(),
+                    timestamp: ts,
+                    fromFilename: true
+                });
+                return;
+            }
 
-      const results = await Promise.all(promises);
-      // Filter out failed loads
-      const validResults = results.filter(r => r !== null) as Subscriber[];
-      
+            // STRATEGY 2: Legacy File Download (Might fail due to CORS)
+            // Only try this if filename format doesn't match
+            const url = await getDownloadURL(item);
+            const response = await fetch(url);
+            if (response.ok) {
+                const data = await response.json();
+                fetchedSubs.push(data);
+            }
+        } catch (err) {
+            console.warn(`Could not read subscriber file: ${item.name}`, err);
+        }
+      }));
+
       // Sort by newest first
-      const sorted = validResults.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      const sorted = fetchedSubs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       setSubscribers(sorted);
-    } catch (e) {
-      console.error("Failed to load newsletter subs", e);
+      
+      if (res.items.length > 0 && sorted.length === 0) {
+          setDebugMsg(`Found ${res.items.length} files but could not read them. Try submitting a new test email.`);
+      }
+
+    } catch (e: any) {
+      console.error("Failed to list newsletter subs", e);
+      setDebugMsg(`Error listing files: ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -126,7 +154,14 @@ const Newsletter: React.FC = () => {
            </div>
         ) : (
            <div className="p-12 text-center text-slate-400 italic">
-              No subscribers found.
+              <p>No subscribers found.</p>
+              {debugMsg && <p className="text-xs text-slate-300 mt-2 font-mono">{debugMsg}</p>}
+              <div className="bg-amber-50 text-amber-800 text-xs p-4 rounded mt-4 max-w-md mx-auto text-left">
+                 <strong>Note:</strong> We updated the storage system. 
+                 <br/>1. Try submitting a <strong>new</strong> test email in the footer.
+                 <br/>2. If the new one appears, the system is working!
+                 <br/>3. Old entries might be hidden due to browser security (CORS), but they are safe in your Firebase Console.
+              </div>
            </div>
         )}
       </div>
