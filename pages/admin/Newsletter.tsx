@@ -1,8 +1,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { storage } from '../../firebase';
-import { ref, listAll, getDownloadURL } from 'firebase/storage';
-import { Mail, Download, Loader2, RefreshCw, Calendar, Copy, Trash2 } from 'lucide-react';
+import { ref, listAll, getBytes } from 'firebase/storage';
+import { Mail, Download, Loader2, RefreshCw, Calendar, Copy } from 'lucide-react';
 import { Button } from '../../components/Button';
 
 interface Subscriber {
@@ -25,11 +25,10 @@ const Newsletter: React.FC = () => {
       
       const promises = res.items.map(async (item) => {
         try {
-            const url = await getDownloadURL(item);
-            // Use no-store to prevent caching of file contents
-            const response = await fetch(url, { cache: "no-store" });
-            if (!response.ok) return null;
-            const data = await response.json();
+            // Use getBytes directly from SDK to bypass CORS issues with fetch()
+            const buffer = await getBytes(item);
+            const text = new TextDecoder().decode(buffer);
+            const data = JSON.parse(text);
             return data as Subscriber;
         } catch (err) {
             console.warn("Skipping corrupt or unreachable subscriber file", err);
@@ -128,8 +127,6 @@ const Newsletter: React.FC = () => {
         ) : (
            <div className="p-12 text-center text-slate-400 italic">
               No subscribers found.
-              <br/>
-              <span className="text-xs">Ensure your Firebase Storage rules allow writes.</span>
            </div>
         )}
       </div>
