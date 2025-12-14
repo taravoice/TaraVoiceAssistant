@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { storage } from '../../firebase';
 import { ref, listAll, getDownloadURL } from 'firebase/storage';
-import { Mail, Download, Loader2, RefreshCw, Calendar, Copy } from 'lucide-react';
+import { Mail, Download, Loader2, RefreshCw, Calendar, Copy, Trash2 } from 'lucide-react';
 import { Button } from '../../components/Button';
 
 interface Subscriber {
@@ -21,16 +21,28 @@ const Newsletter: React.FC = () => {
     try {
       const listRef = ref(storage, 'newsletter/');
       const res = await listAll(listRef);
+      console.log(`Newsletter: Found ${res.items.length} files.`);
       
       const promises = res.items.map(async (item) => {
-        const url = await getDownloadURL(item);
-        const data = await fetch(url).then(r => r.json());
-        return data as Subscriber;
+        try {
+            const url = await getDownloadURL(item);
+            // Use no-store to prevent caching of file contents
+            const response = await fetch(url, { cache: "no-store" });
+            if (!response.ok) return null;
+            const data = await response.json();
+            return data as Subscriber;
+        } catch (err) {
+            console.warn("Skipping corrupt or unreachable subscriber file", err);
+            return null;
+        }
       });
 
       const results = await Promise.all(promises);
+      // Filter out failed loads
+      const validResults = results.filter(r => r !== null) as Subscriber[];
+      
       // Sort by newest first
-      const sorted = results.sort((a, b) => b.timestamp - a.timestamp);
+      const sorted = validResults.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       setSubscribers(sorted);
     } catch (e) {
       console.error("Failed to load newsletter subs", e);
@@ -115,7 +127,9 @@ const Newsletter: React.FC = () => {
            </div>
         ) : (
            <div className="p-12 text-center text-slate-400 italic">
-              No subscribers yet.
+              No subscribers found.
+              <br/>
+              <span className="text-xs">Ensure your Firebase Storage rules allow writes.</span>
            </div>
         )}
       </div>
