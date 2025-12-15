@@ -18,14 +18,14 @@ const About: React.FC = () => {
   };
 
   return (
-    <div className="bg-[#d9d9d9]">
+    <div className="bg-[#f2f2f2]">
       <SEO 
         title="About Tara Voice Assistant | AI Virtual Receptionist Service"
         description="Learn about Tara, the leading AI virtual receptionist service for SMBs. Our mission is to democratize 24/7 automated phone answering and appointment scheduling."
       />
 
       {/* Header */}
-      <div className="bg-[#d9d9d9] py-16 border-b border-slate-200">
+      <div className="bg-[#f2f2f2] py-16 border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl font-bold text-slate-900">About Us</h1>
           <p className="mt-4 text-xl text-slate-600">Building the future of <strong>AI call handler for business</strong>.</p>
