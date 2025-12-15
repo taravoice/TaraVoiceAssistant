@@ -63,13 +63,13 @@ const Features: React.FC = () => {
   ];
 
   return (
-    <div className="bg-[#d9d9d9]">
+    <div className="bg-[#f2f2f2]">
       <SEO 
         title="AI Call Answering Software & Features | Reduce Inbound Calls"
         description="Explore features of Tara AI: Appointment booking automation, dynamic call routing, calendar syncing, and business insights. The complete voice AI for call centers and SMBs."
       />
 
-      <div className="bg-[#d9d9d9] py-16 border-b border-slate-200">
+      <div className="bg-[#f2f2f2] py-16 border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl font-bold text-slate-900">AI Call Answering Software Features</h1>
           <p className="mt-4 text-xl text-slate-600">Advanced capabilities to power your front desk and <strong>reduce inbound calls automation</strong> friction.</p>
