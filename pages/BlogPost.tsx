@@ -39,7 +39,7 @@ const BlogPost: React.FC = () => {
   }
 
   return (
-    <div className="bg-[#d9d9d9] min-h-screen">
+    <div className="bg-[#f2f2f2] min-h-screen">
       <SEO 
         title={`${post.title} | Tara Voice Blog`} 
         description={post.excerpt}
