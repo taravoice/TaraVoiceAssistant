@@ -28,7 +28,8 @@ const Home: React.FC = () => {
       />
 
       {/* Hero Section */}
-      <section className="relative bg-[#f2f2f2] overflow-hidden min-h-[600px] flex items-center">
+      {/* Changed bg to slate-900 to ensure white text is visible */}
+      <section className="relative bg-slate-900 overflow-hidden min-h-[600px] flex items-center">
         {/* Background Layer */}
         <div className="absolute inset-0 z-0">
            {/* HERO BACKGROUND IMAGE - OPACITY CONTROL HERE (opacity-40 = 40%) */}
@@ -36,8 +37,8 @@ const Home: React.FC = () => {
              <MediaRenderer 
                src={getBustedUrl(content.images.homeHeroBg)} 
                alt="AI receptionist for business dashboard background"
-               className="w-full h-full object-cover opacity-100"
-               videoClassName="w-full h-full object-cover opacity-100"
+               className="w-full h-full object-cover opacity-40"
+               videoClassName="w-full h-full object-cover opacity-40"
              />
            )}
         </div>
@@ -45,16 +46,21 @@ const Home: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-32 relative z-10">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8 animate-fade-in-up">
-              <div className="inline-flex items-center px-4 py-2 rounded-full bg-[#0097b2]/10 text-[#0097b2] text-sm font-semibold">
+              <div className="inline-flex items-center px-4 py-2 rounded-full bg-[#0097b2]/10 text-[#0097b2] text-sm font-semibold border border-[#0097b2]/20">
                 <span className="flex h-2 w-2 rounded-full bg-[#0097b2] mr-2"></span>
                 AI Phone Agent for Small Business
               </div>
-              <h1 className="text-4xl lg:text-6xl font-bold text-slate-900 leading-tight">
+              
+              {/* UPDATED: Title Color #ffffff */}
+              <h1 className="text-4xl lg:text-6xl font-bold text-[#ffffff] leading-tight">
                 {content.home.heroTitle}
               </h1>
-              <p className="text-xl text-slate-600 max-w-lg">
+              
+              {/* UPDATED: Subtitle Color #f2f2f2 */}
+              <p className="text-xl text-[#f2f2f2] max-w-lg">
                 {content.home.heroSubtitle}
               </p>
+              
               <div className="flex flex-col sm:flex-row gap-4">
                 <Link to="/contact">
                   <Button size="lg" className="w-full sm:w-auto">
@@ -62,7 +68,7 @@ const Home: React.FC = () => {
                   </Button>
                 </Link>
                 <Link to="/features">
-                   <Button variant="outline" size="lg" className="w-full sm:w-auto">
+                   <Button variant="outline" size="lg" className="w-full sm:w-auto border-slate-500 text-slate-300 hover:border-white hover:text-white hover:bg-white/10">
                      Learn More
                    </Button>
                 </Link>
