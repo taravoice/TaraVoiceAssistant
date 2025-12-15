@@ -12,7 +12,7 @@ const Pricing: React.FC = () => {
   const customSections = content.customSections.filter(s => s.page === 'Pricing');
 
   return (
-    <div className="bg-[#d9d9d9] min-h-screen">
+    <div className="bg-[#f2f2f2] min-h-screen">
       <SEO 
         title="Pricing | Affordable AI Receptionist for Business"
         description="Simple pricing for your AI appointment setter. $97/month for 24/7 automated phone answering, calendar integration, and call recording."
