@@ -35,8 +35,8 @@ const Home: React.FC = () => {
              <MediaRenderer 
                src={getBustedUrl(content.images.homeHeroBg)} 
                alt="AI receptionist for business dashboard background"
-               className="w-full h-full object-cover opacity-40"
-               videoClassName="w-full h-full object-cover opacity-40"
+               className="w-full h-full object-cover opacity-90"
+               videoClassName="w-full h-full object-cover opacity-90"
              />
            )}
         </div>
