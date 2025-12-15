@@ -9,14 +9,14 @@ const Blog: React.FC = () => {
   const { blogPosts } = useSite(); // Get dynamic posts
 
   return (
-    <div className="bg-[#d9d9d9] min-h-screen">
+    <div className="bg-[#f2f2f2] min-h-screen">
       <SEO 
         title="Blog | Tara Voice Assistant AI Insights & Tips" 
         description="Explore 20+ articles on AI appointment setting, voice automation strategies, and business efficiency. Learn how to reduce missed calls."
       />
       
       {/* Header */}
-      <div className="bg-[#d9d9d9] py-16 border-b border-slate-200">
+      <div className="bg-[#f2f2f2] py-16 border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl font-bold text-slate-900">Tara Voice AI Blog</h1>
           <p className="mt-4 text-xl text-slate-600">Insights on AI, Automation, and Business Growth.</p>
