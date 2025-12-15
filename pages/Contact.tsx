@@ -59,7 +59,7 @@ const Contact: React.FC = () => {
   };
 
   return (
-    <div className="bg-[#d9d9d9] min-h-screen py-20">
+    <div className="bg-[#f2f2f2] min-h-screen py-20">
       <SEO 
         title="Contact Tara Voice Assistant | Get Your AI Phone Agent"
         description="Contact us to set up your AI appointment setter. Automate your front desk with our AI virtual receptionist service."
